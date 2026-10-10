@@ -13,6 +13,8 @@ import {
   gemini,
   isDemo,
   runDelivery,
+  elevenLabsVoiceId,
+  personalityForTree,
 } from "../_shared/services.ts";
 import { insights } from "../_shared/insights.ts";
 const cors = {
@@ -83,6 +85,7 @@ async function dialogue(tree_id: string) {
     watering_eligible: fresh && !!t.request_id,
     recovery_pct: t.recovery_pct,
   };
+  const personality = personalityForTree(state);
   const fingerprint = await digest(JSON.stringify(state));
   const { data: cached } = await db
     .from("tree_dialogue")
@@ -115,6 +118,7 @@ async function dialogue(tree_id: string) {
   const value = {
     tree_id,
     fingerprint,
+    personality,
     message,
     source,
     updated_at: new Date().toISOString(),
@@ -278,6 +282,22 @@ Deno.serve(async (req) => {
           p: sessionSchema.parse(p),
         }),
       );
+    if (route === "rename-tree") {
+      const body = z
+        .object({
+          tree_id: z.string().uuid(),
+          name: z.string().trim().min(1).max(80),
+        })
+        .strict()
+        .parse(p);
+      return json(
+        await rpc("rename_tree", {
+          p_player: u.id,
+          p_tree: body.tree_id,
+          p_name: body.name,
+        }),
+      );
+    }
     if (route === "tree-insights") return json(await insights(u.id, p));
     if (route === "simulator") return json(await simulate(p, u.id));
     if (route === "register-tree") {
@@ -358,7 +378,7 @@ Deno.serve(async (req) => {
           reason: "Use labeled device speech in demo mode.",
         });
       const key = Deno.env.get("ELEVENLABS_API_KEY"),
-        voice = Deno.env.get("ELEVENLABS_VOICE_ID");
+        voice = elevenLabsVoiceId(d.personality);
       if (!key || !voice)
         return json({ message: d.message, url: null, source: "unavailable" });
       const audioFingerprint = await digest(

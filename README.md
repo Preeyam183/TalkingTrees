@@ -47,6 +47,8 @@ npm run demo:reset
 
 This resets **only the local project database**. Re-run `npm run backend` if the local stack restart disconnects its serving process. Do not use demo reset commands against a hosted environment.
 
+Connected provider credentials for local Edge Functions belong in `supabase/.env.local`, because `npm run backend` loads that file. The root `.env` is not loaded by the Edge Function server. Use `ELEVENLABS_VOICE_ID_WARM`, `ELEVENLABS_VOICE_ID_WATCHFUL`, `ELEVENLABS_VOICE_ID_QUIET`, and `ELEVENLABS_VOICE_ID_SOLEMN` for personality-specific voices; `ELEVENLABS_VOICE_ID` remains the fallback.
+
 ## Expo mobile
 
 ```sh

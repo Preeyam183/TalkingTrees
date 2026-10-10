@@ -80,6 +80,8 @@ export default function App() {
     [question, setQuestion] = useState("How are my trees doing this week?"),
     [insight, setInsight] = useState<InsightResponse | null>(null),
     [register, setRegister] = useState(false),
+    [renaming, setRenaming] = useState(false),
+    [renameName, setRenameName] = useState(""),
     [photo, setPhoto] = useState(""),
     [name, setName] = useState(""),
     [species, setSpecies] = useState<string | null>(null),
@@ -140,6 +142,8 @@ export default function App() {
   }, []);
   useEffect(() => {
     setSession(null);
+    setRenaming(false);
+    setRenameName(tree?.name ?? "");
   }, [selected, user]);
   useEffect(() => {
     setMessage("");
@@ -193,6 +197,11 @@ export default function App() {
         idempotency_key,
       }),
     );
+  }
+  async function renameTree() {
+    if (!tree) return;
+    await api.call("rename-tree", { tree_id: tree.id, name: renameName });
+    setRenaming(false);
   }
   async function voice() {
     if (!tree) return;
@@ -410,6 +419,34 @@ export default function App() {
                   />
                 )}
                 <Text style={styles.title}>{tree.name}</Text>
+                {user === tree.owner_id &&
+                  (renaming ? (
+                    <>
+                      <TextInput
+                        style={styles.input}
+                        accessibilityLabel="Tree name"
+                        value={renameName}
+                        maxLength={80}
+                        onChangeText={setRenameName}
+                      />
+                      <Button
+                        title="Save name"
+                        disabled={busy}
+                        onPress={() => run(renameTree)}
+                      />
+                      <Button
+                        title="Cancel"
+                        disabled={busy}
+                        onPress={() => setRenaming(false)}
+                      />
+                    </>
+                  ) : (
+                    <Button
+                      title="Rename tree"
+                      disabled={busy}
+                      onPress={() => setRenaming(true)}
+                    />
+                  ))}
                 <Text style={styles.muted}>
                   {tree.species_name ?? "Unidentified"} · {tree.status}
                 </Text>

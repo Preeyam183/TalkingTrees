@@ -20,6 +20,23 @@ export async function isDemo() {
     Deno.env.get("APP_MODE") === "demo" && (await config()).demo_mode === true
   );
 }
+export type TreePersonality = "warm" | "watchful" | "quiet" | "solemn";
+export function personalityForTree(state: {
+  status: string;
+}): TreePersonality {
+  if (state.status === "dead") return "solemn";
+  if (state.status === "unknown") return "quiet";
+  if (state.status === "thirsty") return "watchful";
+  return "warm";
+}
+export function elevenLabsVoiceId(personality: string | null | undefined) {
+  const normalized = personality?.trim().toUpperCase();
+  return (
+    (normalized
+      ? Deno.env.get(`ELEVENLABS_VOICE_ID_${normalized}`)
+      : undefined) || Deno.env.get("ELEVENLABS_VOICE_ID")
+  );
+}
 export async function gemini(
   prompt: string,
   image?: { data: string; mimeType: string },

@@ -69,7 +69,9 @@ export default function App() {
     ),
     [simLocation, setSimLocation] = useState(devDemo),
     [session, setSession] = useState<WateringSession | null>(null),
-    [registration, setRegistration] = useState(false);
+    [registration, setRegistration] = useState(false),
+    [renaming, setRenaming] = useState(false),
+    [renameName, setRenameName] = useState("");
   const data = snapshot.data;
   const tree = data?.trees.find((t) => t.id === selected) ?? null;
   const me = data?.players.find((p) => p.id === user);
@@ -116,6 +118,8 @@ export default function App() {
   }, []);
   useEffect(() => {
     setSession(null);
+    setRenaming(false);
+    setRenameName(tree?.name ?? "");
   }, [selected, user]);
   const dialogue = useQuery({
     queryKey: ["dialogue", tree?.id, tree?.updated_at, user],
@@ -148,6 +152,12 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+  async function renameTree() {
+    if (!tree) return;
+    await api.call("rename-tree", { tree_id: tree.id, name: renameName });
+    setRenaming(false);
+    refresh();
   }
   async function locate() {
     const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
@@ -517,6 +527,41 @@ export default function App() {
                     <div className="tree-content">
                       <span className="eyebrow">MEET YOUR NEIGHBOR</span>
                       <h2>{tree.name}</h2>
+                      {user === tree.owner_id &&
+                        (renaming ? (
+                          <form
+                            className="rename-form"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              void action(renameTree);
+                            }}
+                          >
+                            <input
+                              aria-label="Tree name"
+                              value={renameName}
+                              maxLength={80}
+                              onChange={(event) =>
+                                setRenameName(event.target.value)
+                              }
+                            />
+                            <button type="submit" disabled={busy}>
+                              Save name
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRenaming(false)}
+                            >
+                              Cancel
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            className="text-button"
+                            onClick={() => setRenaming(true)}
+                          >
+                            Rename tree
+                          </button>
+                        ))}
                       <p>
                         {tree.species_name ?? "Unidentified species"} ·{" "}
                         {
