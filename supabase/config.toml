@@ -1,0 +1,70 @@
+project_id = "treequest"
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+[studio]
+enabled = true
+port = 54323
+[local_smtp]
+enabled = true
+port = 54324
+[storage]
+enabled = true
+file_size_limit = "10MiB"
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+[functions.api]
+verify_jwt = false
+
+[functions.sensor-readings]
+verify_jwt = false
+
+[functions.watering-evidence]
+verify_jwt = false
+
+[functions.tree-health-events]
+verify_jwt = false
+
+[functions.device-sessions]
+verify_jwt = false
+
+[functions.watering-sessions]
+verify_jwt = false
+
+[functions.tree-insights]
+verify_jwt = false
+
+[functions.register-tree]
+verify_jwt = false
+
+[functions.identify-tree]
+verify_jwt = false
+
+[functions.tree-dialogue]
+verify_jwt = false
+
+[functions.tree-voice]
+verify_jwt = false
+
+[functions.delivery-worker]
+verify_jwt = false
+
+[functions.simulator]
+verify_jwt = false

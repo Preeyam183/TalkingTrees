@@ -1,0 +1,426 @@
+import {
+  z,
+  readingSchema,
+  evidenceSchema,
+  healthSchema,
+  sessionSchema,
+  locationSchema,
+} from "../../../packages/shared/src/index.ts";
+import {
+  db,
+  rpc,
+  config,
+  gemini,
+  isDemo,
+  runDelivery,
+} from "../_shared/services.ts";
+import { insights } from "../_shared/insights.ts";
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, apikey, content-type, x-device-key, x-worker-secret",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...cors, "Content-Type": "application/json" },
+  });
+async function digest(value: string) {
+  return [
+    ...new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+    ),
+  ]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+async function authenticateDevice(req: Request, p: any) {
+  const key = req.headers.get("X-Device-Key");
+  if (!key) throw new Error("unauthorized_device");
+  const { data, error } = await db
+    .from("devices")
+    .select("id,tree_id,key_hash,can_report_health")
+    .eq("id", p.device_id)
+    .is("revoked_at", null)
+    .single();
+  if (
+    error ||
+    !data ||
+    data.tree_id !== p.tree_id ||
+    data.key_hash !== (await digest(key))
+  )
+    throw new Error("unauthorized_device");
+  return data;
+}
+async function user(req: Request) {
+  const token = req.headers.get("Authorization")?.replace(/^Bearer /, "");
+  if (!token) throw new Error("unauthorized");
+  const { data, error } = await db.auth.getUser(token);
+  if (error || !data.user) throw new Error("unauthorized");
+  return data.user;
+}
+async function dialogue(tree_id: string) {
+  const { data: t, error } = await db
+    .from("tree_map")
+    .select("*")
+    .eq("id", tree_id)
+    .single();
+  if (error) throw error;
+  const cfg = await config();
+  const fresh =
+    t.reading_at &&
+    Date.now() - Date.parse(t.reading_at) < cfg.stale_seconds * 1000;
+  const state = {
+    species: t.species_name,
+    status: fresh
+      ? t.status
+      : ["dead", "inactive"].includes(t.status)
+        ? t.status
+        : "unknown",
+    moisture: fresh ? t.moisture : null,
+    temperature: fresh ? t.temperature : null,
+    watering_eligible: fresh && !!t.request_id,
+    recovery_pct: t.recovery_pct,
+  };
+  const fingerprint = await digest(JSON.stringify(state));
+  const { data: cached } = await db
+    .from("tree_dialogue")
+    .select("*")
+    .eq("tree_id", tree_id)
+    .eq("fingerprint", fingerprint)
+    .maybeSingle();
+  if (cached) return cached;
+  let message =
+    state.status === "dead"
+      ? "My death has been confirmed. Thank you for caring for the grove."
+      : state.status === "unknown"
+        ? "I don't have fresh readings yet. Let's check my sensor before watering."
+        : state.watering_eligible
+          ? "I'm thirsty! Start a care session nearby, then water until my sensor confirms recovery."
+          : "I'm comfortable for now. Save your water for a thirsty neighbor!";
+  let source = "template";
+  if (!(await isDemo()))
+    try {
+      const g = await gemini(
+        `Write one short first-person tree message, JSON {message:string}, at most 200 characters. Describe only this supplied state. Never invent diagnoses, numbers or change eligibility/rules. ${JSON.stringify(state)}`,
+      );
+      if (typeof g.message === "string" && g.message.length <= 200) {
+        message = g.message;
+        source = "gemini";
+      }
+    } catch {
+      /* templates */
+    }
+  const value = {
+    tree_id,
+    fingerprint,
+    message,
+    source,
+    updated_at: new Date().toISOString(),
+    audio_path: null,
+  };
+  await db.from("tree_dialogue").upsert(value);
+  return value;
+}
+async function simulate(p: any, player: string) {
+  if (!(await isDemo())) throw new Error("simulator_disabled");
+  const body = z
+    .object({
+      action: z.enum([
+        "reading",
+        "partial",
+        "complete",
+        "death",
+        "deliver",
+        "reset",
+      ]),
+      tree_id: z.string().uuid().optional(),
+      session_id: z.string().uuid().optional(),
+      moisture: z.number().min(0).max(100).optional(),
+    })
+    .strict()
+    .parse(p);
+  if (body.action === "deliver") return runDelivery();
+  if (body.action === "reset") return rpc("reset_demo");
+  if (!body.tree_id) throw new Error("tree_id required");
+  const { data: d, error } = await db
+    .from("devices")
+    .select("*")
+    .eq("tree_id", body.tree_id)
+    .single();
+  if (error) throw error;
+  const base = () => ({
+    external_event_id: crypto.randomUUID(),
+    device_id: d.id,
+    tree_id: d.tree_id,
+    timestamp: new Date().toISOString(),
+  });
+  if (body.action === "death")
+    return rpc("report_health", {
+      p: {
+        ...base(),
+        status: "dead",
+        confirmed: true,
+        reason: "Developer simulator confirmed death",
+      },
+    });
+  if (body.action === "reading")
+    return rpc("ingest_reading", {
+      p: {
+        ...base(),
+        soil_moisture_pct: body.moisture ?? 22,
+        temperature_c: 21,
+      },
+    });
+  if (!body.session_id) throw new Error("Start a watering session first");
+  const { data: s } = await db
+    .from("watering_sessions")
+    .select("*")
+    .eq("id", body.session_id)
+    .eq("player_id", player)
+    .single();
+  if (!s) throw new Error("session_not_found");
+  const { data: t } = await db
+    .from("tree_map")
+    .select("*")
+    .eq("id", body.tree_id)
+    .single();
+  // First register a post-session partial reading; authenticated explicit evidence precedes recovery.
+  const partial = {
+    ...base(),
+    soil_moisture_pct: Math.min(
+      (t?.recovery_pct ?? 45) - 1,
+      s.baseline_pct + 2,
+    ),
+    temperature_c: 21,
+  };
+  await rpc("ingest_reading", { p: partial });
+  const evidence = {
+    ...base(),
+    session_id: s.id,
+    evidence_type: "explicit_watering_event",
+    sensor_event_id: partial.external_event_id,
+  };
+  const result = await rpc("submit_evidence", { p: evidence });
+  if (body.action === "partial") return result;
+  return rpc("ingest_reading", {
+    p: {
+      ...base(),
+      soil_moisture_pct: t?.recovery_pct ?? 45,
+      temperature_c: 21,
+    },
+  });
+}
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  try {
+    const route = new URL(req.url).pathname.split("/").filter(Boolean).at(-1)!;
+    const p = await req.json();
+    if (route === "delivery-worker") {
+      const expected = Deno.env.get("WORKER_SECRET");
+      if (!expected || req.headers.get("X-Worker-Secret") !== expected)
+        return json({ error: "unauthorized" }, 401);
+      return json(await runDelivery());
+    }
+    if (
+      [
+        "sensor-readings",
+        "watering-evidence",
+        "tree-health-events",
+        "device-sessions",
+      ].includes(route)
+    ) {
+      const schema =
+        route === "sensor-readings"
+          ? readingSchema
+          : route === "watering-evidence"
+            ? evidenceSchema
+            : route === "tree-health-events"
+              ? healthSchema
+              : z
+                  .object({
+                    device_id: z.string().uuid(),
+                    tree_id: z.string().uuid(),
+                  })
+                  .strict();
+      const body = schema.parse(p);
+      const device = await authenticateDevice(req, body);
+      if (route === "device-sessions") {
+        const { data, error } = await db
+          .from("watering_sessions")
+          .select("id,tree_id,request_id,started_at,expires_at")
+          .eq("tree_id", device.tree_id)
+          .eq("status", "active")
+          .gt("expires_at", new Date().toISOString());
+        if (error) throw error;
+        return json({ sessions: data });
+      }
+      if (route === "tree-health-events" && !device.can_report_health)
+        return json({ error: "health_permission_denied" }, 403);
+      return json(
+        await rpc(
+          route === "sensor-readings"
+            ? "ingest_reading"
+            : route === "watering-evidence"
+              ? "submit_evidence"
+              : "report_health",
+          { p: body },
+        ),
+      );
+    }
+    const u = await user(req);
+    if (route === "watering-sessions")
+      return json(
+        await rpc("start_watering", {
+          p_player: u.id,
+          p: sessionSchema.parse(p),
+        }),
+      );
+    if (route === "tree-insights") return json(await insights(u.id, p));
+    if (route === "simulator") return json(await simulate(p, u.id));
+    if (route === "register-tree") {
+      const body = locationSchema
+        .extend({
+          name: z.string().min(1).max(80),
+          species_id: z.string().uuid().nullable(),
+          photo_path: z.string().min(1),
+          confirm_new: z.boolean().default(false),
+        })
+        .strict()
+        .parse(p);
+      return json(await rpc("register_tree", { p_player: u.id, p: body }));
+    }
+    if (route === "identify-tree") {
+      const { photo_path } = z
+        .object({ photo_path: z.string().startsWith(`${u.id}/`) })
+        .strict()
+        .parse(p);
+      const { data: blob, error } = await db.storage
+        .from("tree-photos")
+        .download(photo_path);
+      if (error || !blob) throw new Error("Photo unavailable");
+      if (
+        blob.size > 10485760 ||
+        !["image/jpeg", "image/png", "image/webp"].includes(blob.type)
+      )
+        throw new Error("Unsupported image");
+      if (await isDemo())
+        return json({
+          species_name: "Red maple",
+          description:
+            "Simulated identification. Confirm or choose a different species.",
+          uncertain: true,
+          source: "simulated",
+        });
+      try {
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 8192)
+          binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+        const g = await gemini(
+          "Suggest tree species from this photo. JSON {species_name:string|null,description:string,uncertain:boolean}. If uncertain set uncertain=true. Never supply a confidence percentage or watering instructions.",
+          { data: btoa(binary), mimeType: blob.type },
+        );
+        return json({
+          ...z
+            .object({
+              species_name: z.string().nullable(),
+              description: z.string().max(1000),
+              uncertain: z.boolean(),
+            })
+            .parse(g),
+          source: "gemini",
+        });
+      } catch {
+        return json({
+          species_name: null,
+          description:
+            "Identification unavailable. Choose a species or leave unidentified.",
+          uncertain: true,
+          source: "unavailable",
+        });
+      }
+    }
+    if (route === "tree-dialogue" || route === "tree-voice") {
+      const { tree_id } = z
+        .object({ tree_id: z.string().uuid() })
+        .strict()
+        .parse(p);
+      const d = await dialogue(tree_id);
+      if (route === "tree-dialogue") return json(d);
+      if (await isDemo())
+        return json({
+          message: d.message,
+          url: null,
+          source: "simulated",
+          reason: "Use labeled device speech in demo mode.",
+        });
+      const key = Deno.env.get("ELEVENLABS_API_KEY"),
+        voice = Deno.env.get("ELEVENLABS_VOICE_ID");
+      if (!key || !voice)
+        return json({ message: d.message, url: null, source: "unavailable" });
+      const audioFingerprint = await digest(
+        `${d.fingerprint}:${voice}:${Deno.env.get("ELEVENLABS_MODEL") || "eleven_multilingual_v2"}`,
+      );
+      if (d.audio_path && d.audio_fingerprint === audioFingerprint)
+        return json({
+          message: d.message,
+          url: db.storage.from("tree-audio").getPublicUrl(d.audio_path).data
+            .publicUrl,
+          source: "elevenlabs",
+        });
+      try {
+        const response = await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${voice}`,
+          {
+            method: "POST",
+            headers: { "xi-api-key": key, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: d.message,
+              model_id:
+                Deno.env.get("ELEVENLABS_MODEL") || "eleven_multilingual_v2",
+            }),
+            signal: AbortSignal.timeout(20000),
+          },
+        );
+        if (!response.ok) throw new Error("Voice unavailable");
+        const path = `${tree_id}/${audioFingerprint}.mp3`;
+        const { error } = await db.storage
+          .from("tree-audio")
+          .upload(path, await response.arrayBuffer(), {
+            contentType: "audio/mpeg",
+            upsert: true,
+          });
+        if (error) throw error;
+        await db
+          .from("tree_dialogue")
+          .update({ audio_path: path, audio_fingerprint: audioFingerprint })
+          .eq("tree_id", tree_id)
+          .eq("fingerprint", d.fingerprint);
+        return json({
+          message: d.message,
+          url: db.storage.from("tree-audio").getPublicUrl(path).data.publicUrl,
+          source: "elevenlabs",
+        });
+      } catch {
+        return json({ message: d.message, url: null, source: "unavailable" });
+      }
+    }
+    return json({ error: "not_found" }, 404);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Request failed";
+    console.error(message);
+    return json(
+      { error: message },
+      message.includes("unauthorized")
+        ? 401
+        : message.includes("conflict")
+          ? 409
+          : message.includes("unavailable")
+            ? 503
+            : 400,
+    );
+  }
+});

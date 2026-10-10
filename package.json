@@ -1,0 +1,31 @@
+{
+  "name": "treequest",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @treequest/web",
+    "build": "npm run build -w @treequest/web",
+    "mobile": "npm run start -w @treequest/mobile",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "db:test": "supabase test db",
+    "demo:setup": "node scripts/demo-setup.mjs",
+    "demo:reset": "supabase db reset && node scripts/demo-setup.mjs",
+    "backend": "supabase functions serve --env-file supabase/.env.local --no-verify-jwt",
+    "test:integration": "INTEGRATION=1 vitest run tests/backend.integration.test.ts",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^24.0.0",
+    "postgres": "^3.4.9",
+    "prettier": "^3.9.10",
+    "supabase": "^2.50.0",
+    "typescript": "~5.9.2",
+    "vitest": "^4.1.11"
+  }
+}

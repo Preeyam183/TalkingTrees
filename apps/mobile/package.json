@@ -1,0 +1,27 @@
+{
+  "name": "@treequest/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@treequest/shared": "*",
+    "expo": "~54.0.0",
+    "expo-audio": "~1.1.1",
+    "expo-crypto": "~15.0.0",
+    "expo-image-picker": "~17.0.0",
+    "expo-location": "~19.0.0",
+    "expo-speech": "~14.0.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-maps": "1.20.1",
+    "react-native-url-polyfill": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.10"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "TreeQuest",
+    "slug": "treequest",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Verify that you are near a tree before caring for it."
+      }
+    },
+    "android": { "permissions": ["ACCESS_FINE_LOCATION"] },
+    "plugins": ["expo-location", "expo-image-picker", "expo-audio"]
+  }
+}

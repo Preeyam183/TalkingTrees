@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+.expo/
+.supabase/
+supabase/.temp/
+coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+tests/e2e/*.png
+supabase/.branches/

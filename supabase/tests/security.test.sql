@@ -1,0 +1,16 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+set search_path=public,extensions;
+select plan(10);
+select is((select count(*)::int from information_schema.tables where table_schema='public' and table_type='BASE TABLE'),14,'12 domain tables plus configuration and delivery queue');
+select is((select count(*)::int from trees),20,'20 seeded trees');
+select is((select count(*)::int from territories),2,'2 seeded territories');
+select is((select count(*)::int from trees where owner_id='10000000-0000-4000-8000-000000000001'),7,'demo player starts at seven');
+select ok(not has_function_privilege('authenticated','public.ingest_reading(jsonb)','EXECUTE'),'players cannot ingest evidence');
+select ok(not has_function_privilege('anon','public.reset_demo()','EXECUTE'),'anonymous cannot reset demo');
+select ok(not has_table_privilege('authenticated','public.devices','SELECT'),'device secrets not public');
+select ok(not has_table_privilege('authenticated','public.trees','UPDATE'),'ownership protected');
+select is((select count(*)::int from cron.job where jobname in ('treequest-stale-sensors','treequest-sensor-delivery')),2,'both scheduled workers installed');
+select ok((select count(*)=14 from pg_class c join pg_namespace n on c.relnamespace=n.oid where n.nspname='public' and c.relkind='r' and c.relrowsecurity),'RLS enabled on all domain tables');
+select * from finish();
+rollback;
