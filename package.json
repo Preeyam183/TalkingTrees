@@ -25,7 +25,7 @@
     "postgres": "^3.4.9",
     "prettier": "^3.9.10",
     "supabase": "^2.50.0",
-    "typescript": "~5.9.2",
+    "typescript": "~6.0.3",
     "vitest": "^4.1.11"
   }
 }
