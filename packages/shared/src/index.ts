@@ -70,6 +70,11 @@ export type Territory = {
   name: string;
   owner_id: string | null;
   geojson: { type: "Polygon"; coordinates: number[][][] };
+  tree_count: number;
+  leader_tree_count: number;
+  leader_id: string | null;
+  leader_tree_ids: string[];
+  leader_share: number;
 };
 export type WateringSession = {
   id: string;

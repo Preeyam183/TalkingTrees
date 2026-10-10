@@ -37,7 +37,7 @@ test("map, partial watering, verified capture, territory, analytics and realtime
   await expect(page.getByText("Session: completed")).toBeVisible();
   await expect(page.locator(".stats")).toContainText("10");
   await expect(second.locator(".stats")).toContainText("3");
-  await expect(page.locator(".stats>div").nth(2)).toContainText("0");
+  await expect(page.locator(".stats>div").nth(2)).toContainText("1");
   await page.getByRole("button", { name: "Ask my trees", exact: true }).click();
   await page
     .getByRole("button", { name: "Ask my trees", exact: true })

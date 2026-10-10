@@ -329,8 +329,8 @@ header {
   width: 100%;
   z-index: 1;
 }
-.leaflet-tile {
-  filter: saturate(0.4) hue-rotate(9deg);
+.leaflet-container {
+  background: #e7edf0;
 }
 .map-label {
   position: absolute;

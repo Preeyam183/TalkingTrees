@@ -32,7 +32,7 @@ Choose **Play as Alex**. All demo users use password `TreeQuest-demo-2026` with 
 2. Expand **Developer simulator**. If the demo has been idle, click **Make thirsty / refresh** for a fresh baseline.
 3. Leave the visibly labeled simulated location enabled; click **Start a care session**.
 4. Click **Partial watering**. Moisture changes but no points or ownership are awarded.
-5. Click **Verified recovery**. Alex receives 10 points and takes ownership of the thirsty tree, reaching three of four trees in care.
+5. Click **Verified recovery**. Alex receives 10 points, takes ownership of the thirsty tree, and leads Fernwood Grove with three of four trees.
 6. Open the page in another tab to observe realtime updates. **Ask my trees** shows historical statistics, analyzed dates, latest readings, and outstanding deliveries.
 7. **Deliver history now** invokes the same local demo delivery worker that runs every minute. Analytics excludes pending deliveries until they have been delivered.
 8. Try **Confirm death**, healthy-tree watering rejection, photo registration, or another player (sign out, then select a demo player).

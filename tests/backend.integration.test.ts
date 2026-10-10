@@ -9,8 +9,8 @@ const sql = postgres(
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
   { max: 6 },
 );
-const tree = "40000000-0000-4000-8000-000000000002",
-  device = "50000000-0000-4000-8000-000000000002",
+const tree = "40000000-0000-4000-8000-000000000003",
+  device = "50000000-0000-4000-8000-000000000003",
   player = "10000000-0000-4000-8000-000000000001",
   rival = "10000000-0000-4000-8000-000000000002";
 const base = () => ({
@@ -247,9 +247,9 @@ describe.skipIf(!enabled)("local database + edge integration", () => {
     const body = await response.json();
     expect(response.status, JSON.stringify(body)).toBe(200);
     expect(body.source).toBe("simulated");
-    expect(body.tree_ids.length).toBe(7);
+    expect(body.tree_ids.length).toBe(2);
     expect(body.tree_ids).not.toContain(tree);
-    expect(body.freshness).toHaveLength(7);
+    expect(body.freshness).toHaveLength(2);
   });
   it("own-tree care and unowned claims use the same award transaction", async () => {
     for (const owner of [player, null]) {

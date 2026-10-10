@@ -18,7 +18,7 @@ for i in 1..4 loop
  tid:=('40000000-0000-4000-8000-'||lpad(i::text,12,'0'))::uuid;
  did:=('50000000-0000-4000-8000-'||lpad(i::text,12,'0'))::uuid;
  territory:=case when i<=10 then '30000000-0000-4000-8000-000000000001'::uuid else '30000000-0000-4000-8000-000000000002'::uuid end;
- sp:=('20000000-0000-4000-8000-'||lpad(((i-1)%3+1)::text,12,'0'))::uuid;
+sp:=('20000000-0000-4000-8000-'||lpad((case when i=3 then 2 else (i-1)%3+1 end)::text,12,'0'))::uuid;
 m:=case when i in (2,3) then 22 else 55 end;
 insert into trees(id,name,species_id,territory_id,location,owner_id,status,moisture,temperature,reading_at) values(tid,(array['Maple','Oak','Birch'])[(i-1)%3+1]||' '||i,sp,territory,extensions.st_setsrid(extensions.st_makepoint(-73.972+((i-1)%5)*.0012,40.771+(((i-1)%10)/5)*.002),4326)::extensions.geography,case when i<=2 then '10000000-0000-4000-8000-000000000001'::uuid else '10000000-0000-4000-8000-000000000002'::uuid end,case when m=22 then 'thirsty' else 'healthy' end,m,21,now());
  insert into devices(id,tree_id,key_hash,can_report_health) values(did,tid,encode(extensions.digest('demo-device-key-'||i,'sha256'),'hex'),true);

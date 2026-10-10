@@ -346,8 +346,7 @@ export default function App() {
                 {data?.territories.filter((t) => !!user && t.owner_id === user)
                   .length ?? 0}
                 <em>
-                  {Math.round((data?.config.territory_ratio ?? 0.8) * 100)}%
-                  territory control target
+                  Most trees controls each area
                 </em>
               </strong>
             </div>
@@ -410,8 +409,14 @@ export default function App() {
                       <Popup>
                         {t.name}
                         <br />
-                        {data.players.find((p) => p.id === t.owner_id)
-                          ?.display_name ?? "Unclaimed territory"}
+                        {t.leader_id
+                          ? `${data.players.find((p) => p.id === t.leader_id)?.display_name ?? "Unknown player"} leads with ${t.leader_tree_count} of ${t.tree_count} trees`
+                          : "No sole leader"}
+                        <br />
+                        Trees: {data.trees
+                          .filter((tree) => t.leader_tree_ids.includes(tree.id))
+                          .map((tree) => tree.name)
+                          .join(", ") || "None"}
                       </Popup>
                     </Polygon>
                   ))}
