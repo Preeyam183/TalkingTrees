@@ -18,8 +18,8 @@ An `apikey` header containing the project's publishable/anon key can also be sen
 Provision a device through the administrator's SQL connection. Generate a cryptographically random secret, provision it privately to hardware, and store only its SHA-256 digest:
 
 ```sql
-insert into public.devices(id, tree_id, key_hash, can_report_health)
-values ('DEVICE_UUID', 'TREE_UUID', 'LOWERCASE_SHA256_HEX_DIGEST', false);
+insert into public.devices(id, tree_id, hardware_id, key_hash, can_report_health)
+values ('DEVICE_UUID', 'TREE_UUID', 'arduino-01', 'LOWERCASE_SHA256_HEX_DIGEST', false);
 -- Revoke without deleting historical evidence:
 update public.devices set revoked_at = now() where id = 'DEVICE_UUID';
 ```
@@ -27,6 +27,26 @@ update public.devices set revoked_at = now() where id = 'DEVICE_UUID';
 There is one device association per tree in this MVP. Replacement hardware rotates the existing row's credential. Grant `can_report_health` only to devices or operator workflows allowed to confirm a death. Demo keys are `demo-device-key-1` through `demo-device-key-20`, and must never be provisioned in connected environments.
 
 ## Sensor readings
+
+### Raw hardware payload
+
+Hardware may first send the raw controller payload below to `POST /sensor-readings`.
+The `device_id` value is the provisioned `devices.hardware_id`, not a database UUID:
+
+```json
+{
+  "device_id": "arduino-01",
+  "seq": 1,
+  "adc_raw": 280,
+  "moisture_raw": 17937,
+  "air_temperature_c": null,
+  "soil_temperature_c": null,
+  "light_raw": null,
+  "pressure_pa": 101325
+}
+```
+
+`pressure_pa` is optional because older payloads may omit it; use it for the BMP280 barometric pressure when available. `soil_temperature_c` and `light_raw` may remain `null` because those sensors are not installed. The server authenticates the hardware key, stores this payload in `hardware_readings`, and treats `(device, seq)` as idempotent. It does not guess moisture calibration, timestamps, tree associations, or Gemini parameters. A later normalization step can convert the stored payload into the canonical sensor-reading contract below and then call `ingest_reading`.
 
 `POST /sensor-readings`
 

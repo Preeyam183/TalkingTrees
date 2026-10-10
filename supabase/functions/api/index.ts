@@ -1,6 +1,7 @@
 import {
   z,
   readingSchema,
+  hardwareReadingSchema,
   evidenceSchema,
   healthSchema,
   sessionSchema,
@@ -52,6 +53,19 @@ async function authenticateDevice(req: Request, p: any) {
     data.tree_id !== p.tree_id ||
     data.key_hash !== (await digest(key))
   )
+    throw new Error("unauthorized_device");
+  return data;
+}
+async function authenticateHardware(req: Request, hardwareId: string) {
+  const key = req.headers.get("X-Device-Key");
+  if (!key) throw new Error("unauthorized_device");
+  const { data, error } = await db
+    .from("devices")
+    .select("id,tree_id,key_hash")
+    .eq("hardware_id", hardwareId)
+    .is("revoked_at", null)
+    .single();
+  if (error || !data || data.key_hash !== (await digest(key)))
     throw new Error("unauthorized_device");
   return data;
 }
@@ -236,6 +250,33 @@ Deno.serve(async (req) => {
         "device-sessions",
       ].includes(route)
     ) {
+      if (route === "sensor-readings") {
+        const raw = hardwareReadingSchema.safeParse(p);
+        if (raw.success) {
+          const device = await authenticateHardware(req, raw.data.device_id);
+          const { data, error } = await db
+            .from("hardware_readings")
+            .upsert(
+              {
+                device_id: device.id,
+                sequence_number: raw.data.seq,
+                payload: raw.data,
+              },
+              { onConflict: "device_id,sequence_number" },
+            )
+            .select("id,device_id,sequence_number,received_at")
+            .single();
+          if (error) throw error;
+          return json({
+            status: "raw_accepted",
+            hardware_reading_id: data.id,
+            device_id: data.device_id,
+            tree_id: device.tree_id,
+            seq: data.sequence_number,
+            received_at: data.received_at,
+          });
+        }
+      }
       const schema =
         route === "sensor-readings"
           ? readingSchema
