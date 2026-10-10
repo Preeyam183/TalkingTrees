@@ -689,6 +689,11 @@ footer span {
   gap: 7px;
   flex: 1;
 }
+.demo-login {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
 .login input {
   padding: 8px;
 }

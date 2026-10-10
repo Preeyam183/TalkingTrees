@@ -35,11 +35,18 @@ const Simulator = import.meta.env.DEV
   : null;
 const time = (s: string | null) =>
   s ? new Date(s).toLocaleString() : "No readings";
-function Recenter({ tree }: { tree: Tree | null }) {
+function Recenter({
+  tree,
+  location,
+}: {
+  tree: Tree | null;
+  location: { lat: number; lng: number } | null;
+}) {
   const map = useMap();
   useEffect(() => {
-    if (tree) map.flyTo([tree.lat, tree.lng], 16, { duration: 0.5 });
-  }, [tree?.id]);
+    const center = location ?? (tree && { lat: tree.lat, lng: tree.lng });
+    if (center) map.flyTo([center.lat, center.lng], location ? 15 : 16, { duration: 0.5 });
+  }, [location?.lat, location?.lng, tree?.id]);
   return null;
 }
 export default function App() {
@@ -97,6 +104,15 @@ export default function App() {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", on);
     };
+  }, []);
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) =>
+        setLocation({ lat: coords.latitude, lng: coords.longitude }),
+      () => undefined,
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
   }, []);
   useEffect(() => {
     setSession(null);
@@ -438,7 +454,7 @@ export default function App() {
                       }}
                     />
                   )}
-                  <Recenter tree={tree} />
+                  <Recenter tree={tree} location={location} />
                 </MapContainer>
                 <div className="map-label">
                   <span className="connection" /> {data?.trees.length ?? 0}{" "}
@@ -758,8 +774,8 @@ function Login({
   return (
     <div className="login">
       <strong>Join your neighborhood</strong>
-      {demo ? (
-        <>
+      {demo && (
+        <div className="demo-login">
           {[1, 2, 3].map((n) => (
             <button
               disabled={busy}
@@ -769,41 +785,40 @@ function Login({
               Play as {["Alex", "Maya", "Sam"][n - 1]}
             </button>
           ))}
-        </>
-      ) : (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            login(email, password);
-          }}
-        >
-          <input
-            aria-label="Email"
-            placeholder="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            aria-label="Password"
-            placeholder="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={6}
-            required
-          />
-          <button disabled={busy}>Sign in</button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => login(email, password, true)}
-          >
-            Create account
-          </button>
-        </form>
+        </div>
       )}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          login(email, password);
+        }}
+      >
+        <input
+          aria-label="Email"
+          placeholder="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        <input
+          aria-label="Password"
+          placeholder="Password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          minLength={6}
+          required
+        />
+        <button disabled={busy}>Sign in</button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => login(email, password, true)}
+        >
+          Create account
+        </button>
+      </form>
     </div>
   );
 }

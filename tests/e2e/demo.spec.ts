@@ -19,9 +19,9 @@ test("map, partial watering, verified capture, territory, analytics and realtime
   await expect(page.locator(".leaflet-container")).toBeVisible();
   const second = await context.newPage();
   await second.goto("/");
-  await expect(second.locator(".stats")).toContainText("7");
-  await page.getByRole("button", { name: /Oak 8.*22% moisture/ }).click();
-  await expect(page.locator(".tree-panel h2")).toHaveText("Oak 8");
+  await expect(second.locator(".stats")).toContainText("2");
+  await page.getByRole("button", { name: /Birch 3.*22% moisture/ }).click();
+  await expect(page.locator(".tree-panel h2")).toHaveText("Birch 3");
   await expect(page.locator("blockquote")).toContainText("thirsty");
   await page.getByRole("button", { name: "Start a care session" }).click();
   await expect(page.getByText("Session: active")).toBeVisible();
@@ -30,14 +30,14 @@ test("map, partial watering, verified capture, territory, analytics and realtime
     .getByRole("button", { name: "Partial watering", exact: true })
     .click();
   await expect(page.locator(".measurements")).toContainText("24");
-  await expect(page.locator(".stats")).toContainText("7");
+  await expect(page.locator(".stats")).toContainText("2");
   await page
     .getByRole("button", { name: "Verified recovery", exact: true })
     .click();
   await expect(page.getByText("Session: completed")).toBeVisible();
   await expect(page.locator(".stats")).toContainText("10");
-  await expect(second.locator(".stats")).toContainText("8");
-  await expect(page.locator(".stats>div").nth(2)).toContainText("1");
+  await expect(second.locator(".stats")).toContainText("3");
+  await expect(page.locator(".stats>div").nth(2)).toContainText("0");
   await page.getByRole("button", { name: "Ask my trees", exact: true }).click();
   await page
     .getByRole("button", { name: "Ask my trees", exact: true })

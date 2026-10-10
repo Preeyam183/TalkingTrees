@@ -17,8 +17,8 @@ delete from trees where id::text not like '40000000-0000-4000-8000-%';
 update sensor_delivery_queue set state='delivered',attempts=0,lease_until=null,lease_token=null,last_error=null,delivered_at=now();
 for t in select id,territory_id from trees where id::text like '40000000-0000-4000-8000-%' order by territory_id,id loop
 n:=right(t.id::text,12)::int;
-update trees set owner_id=case when n<=7 then '10000000-0000-4000-8000-000000000001'::uuid when n in (9,10,19,20) then null else ('10000000-0000-4000-8000-'||lpad((2+n%2)::text,12,'0'))::uuid end,status=case when n in (10,20) then 'unknown' when n in (3,8,9,12,15) then 'thirsty' else 'healthy' end,moisture=case when n in (10,20) then null when n in (3,8,9,12,15) then 22 else 55 end,temperature=21,reading_at=case when n in (10,20) then null else now() end,updated_at=now() where id=t.id;
-if n in (3,8,9,12,15) then insert into watering_requests(tree_id) values(t.id); end if;
+update trees set owner_id=case when n<=2 then '10000000-0000-4000-8000-000000000001'::uuid else '10000000-0000-4000-8000-000000000002'::uuid end,status=case when n in (2,3) then 'thirsty' else 'healthy' end,moisture=case when n in (2,3) then 22 else 55 end,temperature=21,reading_at=now(),updated_at=now() where id=t.id;
+if n in (2,3) then insert into watering_requests(tree_id) values(t.id); end if;
 perform recalculate_territory(t.territory_id);
 end loop;
 update sensor_readings r set recorded_at=snapshot.reading_at,soil_moisture_pct=snapshot.moisture,temperature_c=snapshot.temperature from trees snapshot where r.tree_id=snapshot.id and r.external_event_id='seed-current' and snapshot.reading_at is not null;

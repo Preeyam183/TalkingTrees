@@ -303,7 +303,7 @@ export default function App() {
         {!user && (
           <View style={styles.card}>
             <Text style={styles.title}>Join your neighborhood</Text>
-            {demo ? (
+            {demo &&
               [1, 2, 3].map((n) => (
                 <Button
                   key={n}
@@ -311,31 +311,27 @@ export default function App() {
                   disabled={busy}
                   onPress={() => run(() => login(n))}
                 />
-              ))
-            ) : (
-              <>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email"
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Password"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                />
-                <Button title="Sign in" onPress={() => run(() => login())} />
-                <Button
-                  title="Create account"
-                  onPress={() => run(() => login(undefined, true))}
-                />
-              </>
-            )}
+              ))}
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+            <Button title="Sign in" onPress={() => run(() => login())} />
+            <Button
+              title="Create account"
+              onPress={() => run(() => login(undefined, true))}
+            />
           </View>
         )}
         <View style={styles.summary}>
