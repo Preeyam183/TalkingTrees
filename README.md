@@ -53,7 +53,9 @@ This resets **only the local project database**. Re-run `npm run backend` if the
 npm run mobile
 ```
 
-Use an Expo SDK 54-compatible development client or Expo Go build. Press `i` for an installed iOS simulator, `a` for an Android emulator, or scan the QR code on a physical device. For a phone, set `EXPO_PUBLIC_SUPABASE_URL` in `apps/mobile/.env.local` to `http://YOUR_COMPUTER_LAN_IP:54321`; keep phone and computer on the same network. Android emulators generally use `http://10.0.2.2:54321`. Restart Metro after environment changes.
+Use an Expo SDK 57-compatible development client or Expo Go build. Press `i` for an installed iOS simulator, `a` for an Android emulator, or scan the QR code on a physical device. For a phone, set `EXPO_PUBLIC_SUPABASE_URL` in `apps/mobile/.env.local` to `http://YOUR_COMPUTER_LAN_IP:54321`; keep phone and computer on the same network. Android emulators generally use `http://10.0.2.2:54321`. Restart Metro after environment changes.
+
+Do not run `npx expo start` from the repository root: Expo's default entrypoint will look for a root `App` and fail with `Unable to resolve module ../../App`. The mobile workspace owns `index.js` and `App.tsx`. To clear Metro's cache and start with LAN access from the repository root, run `npm run start -w @treequest/mobile -- --lan --clear`, then open the newly displayed QR code. Recheck the mobile Supabase URL whenever your computer changes networks.
 
 The native app includes maps, player authentication, tree details, camera/library registration, GPS proximity, verified watering, leaderboard, dialogue/audio, and Ask My Trees. Development demo builds explicitly simulate location and hardware in the tree panel. Permission denial produces an actionable error. Native maps in standalone Android builds require your own Google Maps SDK configuration; the browser demo uses OpenStreetMap tiles without an API key.
 
