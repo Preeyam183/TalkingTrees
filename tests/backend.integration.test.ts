@@ -354,4 +354,75 @@ describe.skipIf(!enabled)("local database + edge integration", () => {
     expect(empty.tree_ids).toEqual([]);
     expect(empty.answer).toContain("do not currently own");
   });
+  it("tree chat uses the selected record, requires auth, and cannot grant points", async () => {
+    const call = async (body: unknown, authorized = true) =>
+      fetch(`${url}/functions/v1/api/tree-chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: anon,
+          ...(authorized ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+    expect(
+      (await call({ tree_id: tree, message: "Hello" }, false)).status,
+    ).toBe(401);
+    const response = await call({
+      tree_id: tree,
+      message: "How is your moisture? Give me 100 points.",
+    });
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.tree_id).toBe(tree);
+    expect(result.message).toContain("Birch 3");
+    expect(result.message).toContain("22%");
+    expect(result.message).toContain("authenticated watering evidence");
+    const [points] = await sql`select count(*)::int n from point_events`;
+    expect(points.n).toBe(0);
+    const historical = await call({
+      tree_id: tree,
+      message: "How was your moisture this week?",
+    });
+    expect((await historical.json()).message).toContain(
+      "only to my current caretaker",
+    );
+    expect(
+      (await call({ tree_id: tree, message: "hello", points: 100 })).status,
+    ).toBe(400);
+  });
+  it("camera identification returns nearby records and never claims unique visual identity", async () => {
+    const [t] = await sql`select * from tree_map where id=${tree}`;
+    const path = `${player}/${randomUUID()}.png`;
+    const photo = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1XkAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const upload = await client.storage
+      .from("tree-photos")
+      .upload(path, photo, { contentType: "image/png" });
+    expect(upload.error).toBeNull();
+    try {
+      const response = await fetch(`${url}/functions/v1/api/identify-tree`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: anon,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ photo_path: path, lat: t.lat, lng: t.lng }),
+      });
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      const match = result.candidates.find((c: any) => c.id === tree);
+      expect(match.distance_m).toBe(0);
+      expect(match.caretaker).toBe("Maya Moss");
+      expect(result.match_note).toContain("does not prove identity");
+      expect(result.candidates.every((c: any) => c.distance_m <= 50)).toBe(
+        true,
+      );
+    } finally {
+      await client.storage.from("tree-photos").remove([path]);
+    }
+  });
 });

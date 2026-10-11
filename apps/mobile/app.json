@@ -11,7 +11,25 @@
         "NSLocationWhenInUseUsageDescription": "Verify that you are near a tree before caring for it."
       }
     },
-    "android": { "permissions": ["ACCESS_FINE_LOCATION"] },
-    "plugins": ["expo-location", "expo-image-picker", "expo-audio"]
+    "android": {
+      "permissions": ["ACCESS_FINE_LOCATION"]
+    },
+    "plugins": [
+      "expo-location",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Photograph trees to identify species and find nearby tree records.",
+          "photosPermission": "Select a tree photo for identification and registration.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Ask your trees questions using your voice."
+        }
+      ]
+    ]
   }
 }

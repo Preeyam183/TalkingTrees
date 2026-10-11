@@ -48,6 +48,80 @@ export const sessionSchema = locationSchema
     idempotency_key: z.string().uuid(),
   })
   .strict();
+export const chatSchema = z
+  .object({
+    tree_id: z.string().uuid(),
+    message: z.string().trim().min(1).max(1000),
+    history: z
+      .array(
+        z
+          .object({
+            role: z.enum(["user", "assistant"]),
+            content: z.string().max(2000),
+          })
+          .strict(),
+      )
+      .max(12)
+      .default([]),
+    voice: z.boolean().default(false),
+  })
+  .strict();
+export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatResponse = {
+  message: string;
+  source: string;
+  personality: string;
+  tree_id: string;
+  queried_at: string;
+  warnings: string[];
+  audio_url: string | null;
+  voice_source: string;
+};
+export type ScanCandidate = Tree & {
+  distance_m: number;
+  caretaker: string | null;
+};
+export type IdentificationResponse = {
+  species_name: string | null;
+  description: string;
+  uncertain: boolean;
+  source: string;
+  candidates: ScanCandidate[];
+  match_note: string;
+};
+export function decodeBase64(value: string): ArrayBuffer {
+  const alphabet =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const input = value.replace(/\s/g, "");
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(input) || input.length % 4 !== 0)
+    throw new Error("Invalid encoded file");
+  const result = new Uint8Array(
+    (input.length / 4) * 3 -
+      (input.endsWith("==") ? 2 : input.endsWith("=") ? 1 : 0),
+  );
+  let index = 0;
+  for (let i = 0; i < input.length; i += 4) {
+    const bits =
+      (alphabet.indexOf(input[i]) << 18) |
+      (alphabet.indexOf(input[i + 1]) << 12) |
+      (Math.max(0, alphabet.indexOf(input[i + 2])) << 6) |
+      Math.max(0, alphabet.indexOf(input[i + 3]));
+    for (const shift of [16, 8, 0])
+      if (index < result.length) result[index++] = (bits >> shift) & 255;
+  }
+  return result.buffer;
+}
+export function connectionMessage(error: unknown, url: string): string {
+  const message =
+    error instanceof Error
+      ? error.message
+      : String((error as { message?: string })?.message ?? error);
+  return /fetch|network request failed|could not connect|timed? ?out|abort/i.test(
+    message,
+  )
+    ? `Could not reach ${url}. Check your internet connection and app server settings. On a phone, localhost points to the phone; use the hosted Supabase URL or your computer's LAN address, then restart Metro.`
+    : message;
+}
 export type Tree = {
   id: string;
   name: string;
@@ -126,17 +200,32 @@ export function createApi(
 ) {
   async function call<T = any>(path: string, body: unknown = {}): Promise<T> {
     const { data } = await client.auth.getSession();
-    const res = await fetch(`${url}/functions/v1/api/${path}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: key,
-        Authorization: `Bearer ${data.session?.access_token ?? key}`,
-      },
-      body: JSON.stringify(body),
-    });
-    const value = await res.json();
-    if (!res.ok) throw new Error(value.error ?? "Request failed");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    let res: Response;
+    try {
+      res = await fetch(`${url}/functions/v1/api/${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: key,
+          Authorization: `Bearer ${data.session?.access_token ?? key}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      throw new Error(connectionMessage(error, url));
+    } finally {
+      clearTimeout(timeout);
+    }
+    const value = await res
+      .json()
+      .catch(() => ({ error: `Server returned HTTP ${res.status}` }));
+    if (!res.ok)
+      throw new Error(
+        value.error ?? value.message ?? `Request failed (HTTP ${res.status})`,
+      );
     return value;
   }
   return {
@@ -152,7 +241,8 @@ export function createApi(
         client.from("species").select("*"),
         client.from("game_config").select("*").single(),
       ]);
-      for (const r of results) if (r.error) throw r.error;
+      for (const r of results)
+        if (r.error) throw new Error(connectionMessage(r.error, url));
       return {
         trees: results[0].data as unknown as Tree[],
         territories: results[1].data as unknown as Territory[],

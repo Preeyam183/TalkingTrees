@@ -23,6 +23,7 @@ import {
 } from "../_shared/services.ts";
 import { personalityParams } from "../_shared/personality.ts";
 import { insights } from "../_shared/insights.ts";
+import { chat, transcribe } from "../_shared/conversation.ts";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -339,6 +340,8 @@ Deno.serve(async (req) => {
       );
     }
     if (route === "tree-insights") return json(await insights(u.id, p));
+    if (route === "tree-chat") return json(await chat(u.id, p));
+    if (route === "transcribe") return json(await transcribe(p));
     if (route === "simulator") return json(await simulate(p, u.id));
     if (route === "register-tree") {
       const body = locationSchema
@@ -353,10 +356,78 @@ Deno.serve(async (req) => {
       return json(await rpc("register_tree", { p_player: u.id, p: body }));
     }
     if (route === "identify-tree") {
-      const { photo_path } = z
-        .object({ photo_path: z.string().startsWith(`${u.id}/`) })
+      const { photo_path, lat, lng } = z
+        .object({
+          photo_path: z.string().startsWith(`${u.id}/`),
+          lat: locationSchema.shape.lat.optional(),
+          lng: locationSchema.shape.lng.optional(),
+        })
         .strict()
+        .refine(
+          (v) => (v.lat === undefined) === (v.lng === undefined),
+          "Both location coordinates are required",
+        )
         .parse(p);
+      async function identified(value: Record<string, unknown>) {
+        let candidates: Record<string, unknown>[] = [];
+        if (lat !== undefined && lng !== undefined) {
+          const cfg = await config();
+          const radius = Math.min(cfg.proximity_m, 100);
+          const latDelta = radius / 111000;
+          const lngDelta =
+            latDelta / Math.max(0.001, Math.cos((lat * Math.PI) / 180));
+          const result = await db
+            .from("tree_map")
+            .select("*")
+            .gte("lat", lat - latDelta)
+            .lte("lat", lat + latDelta)
+            .gte("lng", lng - lngDelta)
+            .lte("lng", lng + lngDelta);
+          if (result.error) throw result.error;
+          const nearby = result.data
+            .map((t) => {
+              const radians = Math.PI / 180;
+              const a =
+                Math.sin(((t.lat - lat) * radians) / 2) ** 2 +
+                Math.cos(lat * radians) *
+                  Math.cos(t.lat * radians) *
+                  Math.sin(((t.lng - lng) * radians) / 2) ** 2;
+              return {
+                ...t,
+                distance_m: Math.round(
+                  6371000 * 2 * Math.asin(Math.sqrt(Math.min(1, a))),
+                ),
+              };
+            })
+            .filter((t) => t.distance_m <= radius)
+            .sort((a, b) => a.distance_m - b.distance_m)
+            .slice(0, 10);
+          const owners = [
+            ...new Set(nearby.map((t) => t.owner_id).filter(Boolean)),
+          ];
+          const profiles = owners.length
+            ? await db
+                .from("profiles")
+                .select("id,display_name")
+                .in("id", owners)
+            : { data: [], error: null };
+          if (profiles.error) throw profiles.error;
+          candidates = nearby.map((t) => ({
+            ...t,
+            caretaker:
+              profiles.data?.find((o) => o.id === t.owner_id)?.display_name ??
+              null,
+          }));
+        }
+        return json({
+          ...value,
+          candidates,
+          match_note:
+            lat === undefined
+              ? "Enable location to find nearby database records. A photo identifies species, not a unique tree."
+              : "Nearby database records are candidates. Confirm the physical tree; species recognition does not prove identity or health.",
+        });
+      }
       const { data: blob, error } = await db.storage
         .from("tree-photos")
         .download(photo_path);
@@ -367,7 +438,7 @@ Deno.serve(async (req) => {
       )
         throw new Error("Unsupported image");
       if (await isDemo())
-        return json({
+        return identified({
           species_name: "Red maple",
           description:
             "Simulated identification. Confirm or choose a different species.",
@@ -394,7 +465,7 @@ Deno.serve(async (req) => {
           { data: btoa(binary), mimeType: blob.type },
           identificationSchema,
         );
-        return json({
+        return identified({
           ...z
             .object({
               species_name: z.string().nullable(),
@@ -405,7 +476,7 @@ Deno.serve(async (req) => {
           source: "gemini",
         });
       } catch {
-        return json({
+        return identified({
           species_name: null,
           description:
             "Identification unavailable. Choose a species or leave unidentified.",

@@ -30,6 +30,7 @@ import {
   type InsightResponse,
 } from "@treequest/shared";
 import { api, client, devDemo, key } from "./client";
+import TreeChat from "./TreeChat";
 const Simulator = import.meta.env.DEV
   ? lazy(() => import("./Simulator"))
   : null;
@@ -45,19 +46,17 @@ function Recenter({
   const map = useMap();
   useEffect(() => {
     const center = location ?? (tree && { lat: tree.lat, lng: tree.lng });
-    if (center) map.flyTo([center.lat, center.lng], location ? 15 : 16, { duration: 0.5 });
+    if (center)
+      map.flyTo([center.lat, center.lng], location ? 15 : 16, {
+        duration: 0.5,
+      });
   }, [location?.lat, location?.lng, tree?.id]);
   return null;
 }
 export default function App() {
   const qc = useQueryClient();
-  const snapshot = useQuery({
-    queryKey: ["world"],
-    queryFn: () => api.snapshot(),
-    enabled: !!key,
-    refetchInterval: 60000,
-  });
   const [user, setUser] = useState<string | null>(null),
+    [authReady, setAuthReady] = useState(false),
     [selected, setSelected] = useState<string | null>(null),
     [tab, setTab] = useState<"map" | "insights" | "leaderboard">("map"),
     [error, setError] = useState(""),
@@ -72,6 +71,12 @@ export default function App() {
     [registration, setRegistration] = useState(false),
     [renaming, setRenaming] = useState(false),
     [renameName, setRenameName] = useState("");
+  const snapshot = useQuery({
+    queryKey: ["world", user],
+    queryFn: () => api.snapshot(),
+    enabled: !!key && !!user,
+    refetchInterval: 30000,
+  });
   const data = snapshot.data;
   const tree = data?.trees.find((t) => t.id === selected) ?? null;
   const me = data?.players.find((p) => p.id === user);
@@ -83,10 +88,22 @@ export default function App() {
   useEffect(() => {
     client.auth
       .getSession()
-      .then(({ data }) => setUser(data.session?.user.id ?? null));
+      .then(({ data, error }) => {
+        if (error) throw error;
+        setUser(data.session?.user.id ?? null);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setAuthReady(true));
     const {
       data: { subscription },
-    } = client.auth.onAuthStateChange((_e, s) => setUser(s?.user.id ?? null));
+    } = client.auth.onAuthStateChange((_e, s) => {
+      setUser(s?.user.id ?? null);
+      if (!s) {
+        setSelected(null);
+        setRegistration(false);
+        qc.removeQueries({ queryKey: ["world"] });
+      }
+    });
     const channel = client
       .channel("world")
       .on("postgres_changes", { event: "*", schema: "public" }, () => refresh())
@@ -108,14 +125,14 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
-    if (!navigator.geolocation) return;
+    if (!user || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       ({ coords }) =>
         setLocation({ lat: coords.latitude, lng: coords.longitude }),
       () => undefined,
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );
-  }, []);
+  }, [user]);
   useEffect(() => {
     setSession(null);
     setRenaming(false);
@@ -207,6 +224,28 @@ export default function App() {
           connect the demo.
         </p>
         <p>See README.md for the full setup.</p>
+      </div>
+    );
+  if (!authReady)
+    return (
+      <div className="setup" role="status">
+        Opening your grove…
+      </div>
+    );
+  if (!user)
+    return (
+      <div className="auth-page">
+        <div className="auth-brand">
+          <Leaf size={42} />
+          <h1>treequest.</h1>
+          <p>A little care. A living neighborhood.</p>
+        </div>
+        <Login onError={setError} demo={devDemo} />
+        {error && (
+          <p className="notice error" role="alert">
+            {error}
+          </p>
+        )}
       </div>
     );
   return (
@@ -320,7 +359,6 @@ export default function App() {
             </button>
           </div>
         )}
-        {!user && <Login onError={setError} demo={!!demo} />}
         <section className="stats">
           <div>
             <span className="stat-icon">
@@ -355,9 +393,7 @@ export default function App() {
               <strong>
                 {data?.territories.filter((t) => !!user && t.owner_id === user)
                   .length ?? 0}
-                <em>
-                  Most trees controls each area
-                </em>
+                <em>Most trees controls each area</em>
               </strong>
             </div>
           </div>
@@ -392,7 +428,11 @@ export default function App() {
             <div className="map-layout">
               <section className="map-card">
                 <MapContainer
-                  center={[40.772, -73.966]}
+                  center={
+                    data?.trees[0]
+                      ? [data.trees[0].lat, data.trees[0].lng]
+                      : [40.772, -73.966]
+                  }
                   zoom={15}
                   className="map"
                   zoomControl={false}
@@ -423,7 +463,8 @@ export default function App() {
                           ? `${data.players.find((p) => p.id === t.leader_id)?.display_name ?? "Unknown player"} leads with ${t.leader_tree_count} of ${t.tree_count} trees`
                           : "No sole leader"}
                         <br />
-                        Trees: {data.trees
+                        Trees:{" "}
+                        {data.trees
                           .filter((tree) => t.leader_tree_ids.includes(tree.id))
                           .map((tree) => tree.name)
                           .join(", ") || "None"}
@@ -622,6 +663,7 @@ export default function App() {
                         <Volume2 size={16} /> Listen to this tree{" "}
                         {demo && <small>· device voice demo</small>}
                       </button>
+                      <TreeChat key={`${user}:${tree.id}`} tree={tree} />
                       <p className="care-note">
                         Recovery threshold:{" "}
                         {tree.recovery_pct ?? "not configured"}%.{" "}
@@ -706,37 +748,38 @@ export default function App() {
             </div>
             <div className="section-heading">
               <div>
-                <h2>A little care goes a long way</h2>
-                <p>These neighbors could use a hand.</p>
+                <h2>Meet your neighbors</h2>
+                <p>Select a tree to see its readings and hear its story.</p>
               </div>
               <span className="muted">
                 {data?.trees.filter((t) => t.request_id).length} active requests
               </span>
             </div>
             <div className="tree-list">
-              {data?.trees
-                .filter((t) => t.request_id)
-                .map((t) => (
-                  <button
-                    key={t.id}
-                    className="tree-item"
-                    onClick={() => setSelected(t.id)}
-                  >
-                    <span className="mini-tree">
-                      <TreePine size={28} />
-                    </span>
-                    <span>
-                      <strong>{t.name}</strong>
-                      <small>
-                        {t.species_name} · {t.moisture}% moisture
-                      </small>
-                    </span>
-                    <span className="points">
-                      +{data?.config.care_points ?? 10}
-                      <ArrowUpRight size={17} />
-                    </span>
-                  </button>
-                ))}
+              {data?.trees.map((t) => (
+                <button
+                  key={t.id}
+                  className="tree-item"
+                  onClick={() => setSelected(t.id)}
+                >
+                  <span className="mini-tree">
+                    <TreePine size={28} />
+                  </span>
+                  <span>
+                    <strong>{t.name}</strong>
+                    <small>
+                      {t.species_name ?? "Unidentified"} · {t.moisture ?? "—"}%
+                      moisture
+                    </small>
+                  </span>
+                  <span className="points">
+                    {t.request_id
+                      ? `+${data?.config.care_points ?? 10}`
+                      : t.status}
+                    <ArrowUpRight size={17} />
+                  </span>
+                </button>
+              ))}
               {!data?.trees.some((t) => t.request_id) && (
                 <p className="empty">
                   The grove has no active watering requests.
@@ -812,64 +855,120 @@ function Login({
 }) {
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
-    [busy, setBusy] = useState(false);
-  async function login(email: string, password: string, signup = false) {
+    [displayName, setDisplayName] = useState(""),
+    [signup, setSignup] = useState(false),
+    [busy, setBusy] = useState(false),
+    [notice, setNotice] = useState("");
+  async function login(e = email, p = password, create = signup) {
     setBusy(true);
-    const r = signup
-      ? await client.auth.signUp({ email, password })
-      : await client.auth.signInWithPassword({ email, password });
-    if (r.error) onError(r.error.message);
-    setBusy(false);
+    onError("");
+    setNotice("");
+    try {
+      const r = create
+        ? await client.auth.signUp({
+            email: e.trim(),
+            password: p,
+            options: {
+              data: { display_name: displayName.trim() || "Tree explorer" },
+            },
+          })
+        : await client.auth.signInWithPassword({
+            email: e.trim(),
+            password: p,
+          });
+      if (r.error) throw r.error;
+      if (create && !r.data.session)
+        setNotice("Check your email to confirm your account, then sign in.");
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
   return (
-    <div className="login">
-      <strong>Join your neighborhood</strong>
+    <section className="auth-card">
+      <span className="eyebrow">WELCOME TO YOUR GROVE</span>
+      <h2>{signup ? "Create your account" : "Welcome back"}</h2>
+      <p>
+        {signup
+          ? "Start your story as a neighborhood caretaker."
+          : "Sign in to explore your trees and continue caring."}
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void login();
+        }}
+      >
+        {signup && (
+          <label>
+            Your name
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              maxLength={60}
+              autoComplete="name"
+              required
+            />
+          </label>
+        )}
+        <label>
+          Email
+          <input
+            type="email"
+            aria-label="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            required
+          />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            aria-label="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete={signup ? "new-password" : "current-password"}
+            minLength={8}
+            required
+          />
+        </label>
+        <button className="primary full" disabled={busy}>
+          {busy ? "Please wait…" : signup ? "Create account" : "Sign in"}
+        </button>
+      </form>
+      {notice && <p role="status">{notice}</p>}
+      <button
+        className="text-button"
+        disabled={busy}
+        onClick={() => {
+          setSignup(!signup);
+          onError("");
+          setNotice("");
+        }}
+      >
+        {signup
+          ? "Already have an account? Sign in"
+          : "New here? Create an account"}
+      </button>
       {demo && (
         <div className="demo-login">
           {[1, 2, 3].map((n) => (
             <button
               disabled={busy}
               key={n}
-              onClick={() => login(`player${n}@treequest.local`, DEMO_PASSWORD)}
+              onClick={() =>
+                void login(`player${n}@treequest.local`, DEMO_PASSWORD, false)
+              }
             >
               Play as {["Alex", "Maya", "Sam"][n - 1]}
             </button>
           ))}
         </div>
       )}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          login(email, password);
-        }}
-      >
-        <input
-          aria-label="Email"
-          placeholder="Email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          aria-label="Password"
-          placeholder="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          minLength={6}
-          required
-        />
-        <button disabled={busy}>Sign in</button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => login(email, password, true)}
-        >
-          Create account
-        </button>
-      </form>
-    </div>
+    </section>
   );
 }
 function Insights({

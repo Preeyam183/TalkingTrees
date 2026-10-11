@@ -138,3 +138,31 @@ External-provider credentials and real hardware are supplied by the team. Connec
 Map tiles and optional web fonts use external public services; the local demo requires no API credentials but is not a fully offline basemap. Device speech varies by installed voices. The prototype does not implement firmware, anti-spoofing attestation, app-store distribution, or production deployment.
 
 Dependency audit currently reports inherited Expo/React Native toolchain advisories; compatible patches were applied. Avoid using development servers on untrusted networks and review the native SDK dependency chain before production rollout. Do not force unrelated native major upgrades without repeating native verification.
+
+## Connected app, conversations, and camera scans
+
+The web and native apps open on a sign-in screen, with a separate account-creation screen. Confirm your email when required by hosted Auth; a signed-in session opens the grove. Signing out clears the selected tree and conversation. Tree selection, caretakers, measurements, and points come from the hosted Supabase views.
+
+For this checkout, both ignored client environment files must target the same hosted project as the Pi. A phone cannot connect to the Mac through `127.0.0.1`. Native photo uploads read image bytes directly rather than fetching a local `file://` URL. Restart Metro after changing client environment settings:
+
+```sh
+npm run mobile -- --lan --clear
+```
+
+Create `supabase/.env.connected` from `supabase/.env.example`, then fill the backend-only provider variables. `CLIENT_SUPABASE_URL` and `CLIENT_SUPABASE_PUBLISHABLE_KEY` can override the root `.env` public project settings. Leave provider values empty until available. Never use a secret/service-role key as the client key.
+
+```sh
+npm run connected:setup
+npx supabase functions deploy api --project-ref YOUR_PROJECT_REF
+npm run dev
+```
+
+`connected:setup` requires a Supabase CLI login with project access. It updates both ignored client files, installs nonempty provider settings, and configures matching worker credentials in Vault. It does not apply migrations or seeds. It leaves existing hosted provider secrets unchanged when a corresponding local field is empty. For a new project, apply migrations first, without demo seeds. This setup requires a CLI version supporting `supabase db query` (v2.79+).
+
+Select a database tree to open **Talk to [tree name]**. The conversation reads its current record, caretaker, sensor freshness, care eligibility, and latest raw Arduino packet. Gemini selects relevant server-authored facts and personality wording; it cannot alter measurements, ownership, or scoring. Historical questions read delivered Tiger Data for trees the signed-in player currently owns. Unavailable history and undelivered readings remain explicit.
+
+**Voice conversation** opens an animated circular voice screen. Tap to record and tap again to send, with a 60-second maximum. The backend uses ElevenLabs `ELEVENLABS_STT_MODEL` (default `scribe_v2`) for transcription and `ELEVENLABS_MODEL` for spoken replies. Configure `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` or personality-specific voice IDs. Web recording requires HTTPS or localhost and a supported MediaRecorder browser. Native recording requires microphone permission and a compatible Expo client/build. Text remains available when voice fails. Demo playback is labeled device speech; microphone transcription still requires ElevenLabs.
+
+On mobile, **Scan a tree → Open camera** identifies species with Gemini and uses permitted GPS coordinates to list nearby database candidates, including caretaker and latest calibrated readings. Confirm the physical tree before selecting a record. Species recognition is not proof of unique tree identity, living condition, or watering. Without GPS, species identification is still available but no location candidates are returned. If the tree is new, use registration.
+
+Raw Pi uploads appear in `hardware_readings` and in conversation facts. They do not populate calibrated moisture, generate watering requests, earn points, or enter Tiger history. Use the hardware guide and Pi bridge's calibrated live mode with measured temperature to send canonical readings. A species recovery profile and valid authenticated watering evidence are necessary for scoring. Existing PostgreSQL game rules remain authoritative.

@@ -64,3 +64,15 @@ Focused verification (the DB test targets only local port 54322 and rolls back i
 npm test
 PERSONALITY_DB=1 npx vitest run tests/personality.test.ts tests/personality.database.test.ts
 ```
+
+## Connected client and conversation update — October 11, 2026
+
+The hosted public client URL/key were checked against `tree_map`, `territory_map`, `leaderboard`, and `game_config`. The project contained one unowned Arduino test tree, 27 raw hardware packets, and no canonical readings at inspection. Raw packets therefore cannot establish calibrated moisture or historical delivery. Client environment files now target this hosted project rather than phone-local loopback.
+
+The update adds separate sign-in/sign-up screens, authenticated per-tree conversations, backend ElevenLabs transcription/TTS, an animated voice screen on both clients, native image-byte uploads, and camera species identification with explicit nearby database candidates. The model selects server-authored factual statements; historical access remains limited to the current caretaker. Conversations and photos do not award points.
+
+Provider credentials are intentionally deferred by the team. End-to-end Gemini, ElevenLabs, and Tiger calls require filling `supabase/.env.connected` and running `npm run connected:setup`. Exported native bundles do not prove physical-phone camera/microphone/GPS behavior or native audio playback.
+
+Recorded checks for this update: 12 unit tests, 19 database/Edge integration tests, 10 pgTAP assertions, and 4 Chromium end-to-end tests passed. Workspace TypeScript and Deno checks, the web production build, and iOS/Android bundle exports passed. Browser tests include successful account creation, auth gating, database-backed tree chat, voice-screen display, registration, verified scoring, and realtime updates. Auth and voice screenshots were visually inspected.
+
+The hosted API was deployed as version 2 and new chat/transcription routes rejected unauthenticated requests with HTTP 401. Hosted secret installation was attempted but the CLI account received an insufficient-privileges error. An account authorized to configure project secrets must run `connected:setup` after the team fills the provider credentials. Hosted worker Vault settings were not installed by that failed attempt. The Supabase connector had permission to deploy the API independently of the CLI account.

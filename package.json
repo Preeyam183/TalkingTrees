@@ -16,6 +16,7 @@
     "test": "vitest run",
     "db:test": "supabase test db",
     "demo:setup": "node scripts/demo-setup.mjs",
+    "connected:setup": "node scripts/connected-setup.mjs",
     "demo:reset": "supabase db reset && node scripts/demo-setup.mjs",
     "backend": "supabase functions serve api --env-file supabase/.env.local --no-verify-jwt",
     "test:integration": "INTEGRATION=1 vitest run tests/backend.integration.test.ts",

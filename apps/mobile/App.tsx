@@ -20,28 +20,15 @@ import * as ImagePicker from "expo-image-picker";
 import * as Speech from "expo-speech";
 import * as Crypto from "expo-crypto";
 import { useAudioPlayer } from "expo-audio";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { type WateringSession, type InsightResponse } from "@treequest/shared";
+import { api, client, demoBuild, url } from "./client";
+import AuthScreen from "./AuthScreen";
+import TreeChat from "./TreeChat";
 import {
-  makeClient,
-  createApi,
-  DEMO_PASSWORD,
-  type Tree,
-  type WateringSession,
-  type InsightResponse,
+  decodeBase64,
+  connectionMessage,
+  type IdentificationResponse,
 } from "@treequest/shared";
-const url = process.env.EXPO_PUBLIC_SUPABASE_URL || "http://127.0.0.1:54321";
-const key =
-  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "not-configured";
-const client = makeClient(url, key, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
-const api = createApi(client, url, key, Crypto.randomUUID);
-const demoBuild = __DEV__ && process.env.EXPO_PUBLIC_APP_MODE === "demo";
 const stamp = (s: string | null) =>
   s ? new Date(s).toLocaleString() : "No readings";
 function Button({
@@ -69,12 +56,13 @@ export default function App() {
       ReturnType<typeof api.snapshot>
     > | null>(null),
     [user, setUser] = useState<string | null>(null),
+    [authReady, setAuthReady] = useState(false),
+    [scanning, setScanning] = useState(false),
+    [scanResult, setScanResult] = useState<IdentificationResponse | null>(null),
     [selected, setSelected] = useState<string | null>(null),
     [tab, setTab] = useState("map"),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [email, setEmail] = useState(""),
-    [password, setPassword] = useState(""),
     [session, setSession] = useState<WateringSession | null>(null),
     [message, setMessage] = useState(""),
     [question, setQuestion] = useState("How are my trees doing this week?"),
@@ -98,10 +86,13 @@ export default function App() {
   const demo = demoBuild && data?.config.demo_mode;
   const player = useAudioPlayer(null);
   async function refresh() {
+    if (!userRef.current) return;
+    const requestedUser = userRef.current;
     try {
-      setData(await api.snapshot());
+      const next = await api.snapshot();
+      if (userRef.current === requestedUser) setData(next);
     } catch (e) {
-      setError((e as Error).message);
+      setError(connectionMessage(e, url));
     }
   }
   async function run(fn: () => Promise<void>) {
@@ -111,19 +102,31 @@ export default function App() {
       await fn();
       await refresh();
     } catch (e) {
-      setError((e as Error).message);
+      setError(connectionMessage(e, url));
     } finally {
       setBusy(false);
     }
   }
   useEffect(() => {
-    refresh();
     client.auth
       .getSession()
-      .then(({ data }) => setUser(data.session?.user.id ?? null));
+      .then(({ data, error }) => {
+        if (error) throw error;
+        setUser(data.session?.user.id ?? null);
+      })
+      .catch((e) => setError(connectionMessage(e, url)))
+      .finally(() => setAuthReady(true));
     const {
       data: { subscription },
-    } = client.auth.onAuthStateChange((_e, s) => setUser(s?.user.id ?? null));
+    } = client.auth.onAuthStateChange((_e, s) => {
+      setUser(s?.user.id ?? null);
+      if (!s) {
+        setData(null);
+        setSelected(null);
+        setRegister(false);
+        setScanning(false);
+      }
+    });
     const channel = client
       .channel("mobile-world")
       .on("postgres_changes", { event: "*", schema: "public" }, refresh)
@@ -140,6 +143,12 @@ export default function App() {
       app.remove();
     };
   }, []);
+  useEffect(() => {
+    if (!user) return;
+    void refresh();
+    const timer = setInterval(refresh, 30000);
+    return () => clearInterval(timer);
+  }, [user]);
   useEffect(() => {
     setSession(null);
     setRenaming(false);
@@ -175,14 +184,6 @@ export default function App() {
     const l = { lat: p.coords.latitude, lng: p.coords.longitude };
     setLoc(l);
     return l;
-  }
-  async function login(n?: number, signup = false) {
-    const e = n ? `player${n}@treequest.local` : email,
-      p = n ? DEMO_PASSWORD : password;
-    const r = signup
-      ? await client.auth.signUp({ email: e, password: p })
-      : await client.auth.signInWithPassword({ email: e, password: p });
-    if (r.error) throw r.error;
   }
   async function start() {
     if (!tree) return;
@@ -227,14 +228,17 @@ export default function App() {
       if (!p.granted) throw new Error("Camera permission required");
     }
     const r = camera
-      ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
+      ? await ImagePicker.launchCameraAsync({ quality: 0.7, base64: true })
       : await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ["images"],
           quality: 0.7,
+          base64: true,
         });
     if (r.canceled) return;
     const asset = r.assets[0];
-    const bytes = await (await fetch(asset.uri)).arrayBuffer();
+    if (!asset.base64)
+      throw new Error("Could not read photo. Please take another picture.");
+    const bytes = decodeBase64(asset.base64);
     const path = await api.uploadPhoto(
       bytes,
       "jpg",
@@ -285,6 +289,46 @@ export default function App() {
       setTab("map");
     }
   }
+  async function scan() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted)
+      throw new Error("Allow camera access in Settings to scan a tree.");
+    const image = await ImagePicker.launchCameraAsync({
+      quality: 0.7,
+      base64: true,
+    });
+    if (image.canceled) return;
+    const asset = image.assets[0];
+    if (!asset.base64)
+      throw new Error("Could not read the photo. Please try again.");
+    const path = await api.uploadPhoto(
+      decodeBase64(asset.base64),
+      "jpg",
+      "image/jpeg",
+    );
+    let location: { lat: number; lng: number } | undefined;
+    try {
+      location = demo ? { lat: 40.771, lng: -73.9696 } : await position();
+    } catch {
+      /* Species identification still works without location. */
+    }
+    setScanResult(
+      await api.call<IdentificationResponse>("identify-tree", {
+        photo_path: path,
+        ...location,
+      }),
+    );
+  }
+  if (!authReady)
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ActivityIndicator
+          accessibilityLabel="Opening your grove"
+          color="#365d3d"
+        />
+      </SafeAreaView>
+    );
+  if (!user) return <AuthScreen />;
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
@@ -309,40 +353,6 @@ export default function App() {
             {error}
           </Text>
         )}
-        {!user && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Join your neighborhood</Text>
-            {demo &&
-              [1, 2, 3].map((n) => (
-                <Button
-                  key={n}
-                  title={`Play as ${["Alex", "Maya", "Sam"][n - 1]}`}
-                  disabled={busy}
-                  onPress={() => run(() => login(n))}
-                />
-              ))}
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-            <Button title="Sign in" onPress={() => run(() => login())} />
-            <Button
-              title="Create account"
-              onPress={() => run(() => login(undefined, true))}
-            />
-          </View>
-        )}
         <View style={styles.summary}>
           <Text style={styles.summaryText}>{me?.points ?? 0} care points</Text>
           <Text style={styles.summaryText}>{me?.owned_trees ?? 0} trees</Text>
@@ -364,10 +374,11 @@ export default function App() {
         {tab === "map" && (
           <>
             <MapView
+              key={data?.trees[0]?.id ?? "empty-grove"}
               style={styles.map}
               initialRegion={{
-                latitude: 40.772,
-                longitude: -73.966,
+                latitude: data?.trees[0]?.lat ?? 40.772,
+                longitude: data?.trees[0]?.lng ?? -73.966,
                 latitudeDelta: 0.012,
                 longitudeDelta: 0.02,
               }}
@@ -470,6 +481,7 @@ export default function App() {
                   disabled={!user || busy}
                   onPress={() => run(voice)}
                 />
+                <TreeChat key={`${user}:${tree.id}`} tree={tree} />
                 <Text style={styles.muted}>
                   Recovery threshold {tree.recovery_pct ?? "unconfigured"}%.
                   Partial watering earns no points.
@@ -538,20 +550,26 @@ export default function App() {
               <Text style={styles.muted}>Select a tree to hear its story.</Text>
             )}
             <Button
+              title="Scan a tree"
+              disabled={busy}
+              onPress={() => {
+                setScanResult(null);
+                setScanning(true);
+              }}
+            />
+            <Button
               title="Register a tree"
               disabled={!user}
               onPress={() => setRegister(true)}
             />
-            <Text style={styles.title}>Neighbors who need care</Text>
-            {data?.trees
-              .filter((t) => t.request_id)
-              .map((t) => (
-                <Button
-                  key={t.id}
-                  title={`${t.name} · ${t.moisture}%`}
-                  onPress={() => setSelected(t.id)}
-                />
-              ))}
+            <Text style={styles.title}>Trees in your neighborhood</Text>
+            {data?.trees.map((t) => (
+              <Button
+                key={t.id}
+                title={`${t.name} · ${t.status} · ${t.moisture ?? "—"}%`}
+                onPress={() => setSelected(t.id)}
+              />
+            ))}
           </>
         )}
         {tab === "leaderboard" &&
@@ -644,6 +662,79 @@ export default function App() {
         )}
         <Button title="Refresh grove" onPress={refresh} />
       </ScrollView>
+      <Modal
+        visible={scanning}
+        animationType="slide"
+        onRequestClose={() => setScanning(false)}
+      >
+        <SafeAreaView style={styles.safe}>
+          <ScrollView contentContainerStyle={styles.container}>
+            <Text style={styles.heading}>Meet a tree</Text>
+            <Text style={styles.muted}>
+              Take a photo to identify its species and find nearby trees in your
+              grove.
+            </Text>
+            <Button
+              title="Open camera"
+              disabled={busy}
+              onPress={() => run(scan)}
+            />
+            {busy && <ActivityIndicator color="#365d3d" />}
+            {!!error && (
+              <Text accessibilityRole="alert" style={styles.error}>
+                {error}
+              </Text>
+            )}
+            {scanResult && (
+              <>
+                <Text style={styles.title}>
+                  {scanResult.species_name ?? "Species unidentified"}
+                </Text>
+                <Text>{scanResult.description}</Text>
+                <Text style={styles.muted}>{scanResult.match_note}</Text>
+                {scanResult.candidates.map((candidate) => (
+                  <View key={candidate.id} style={styles.card}>
+                    <Text style={styles.title}>
+                      {candidate.name} · {candidate.distance_m} m away
+                    </Text>
+                    <Text>Caretaker: {candidate.caretaker ?? "Unclaimed"}</Text>
+                    <Text>Recorded status: {candidate.status}</Text>
+                    <Text>
+                      Moisture: {candidate.moisture ?? "unavailable"}% ·
+                      temperature: {candidate.temperature ?? "unavailable"} °C
+                    </Text>
+                    <Text style={styles.muted}>
+                      Latest calibrated reading: {stamp(candidate.reading_at)}
+                    </Text>
+                    <Button
+                      title={`This is ${candidate.name}`}
+                      onPress={() => {
+                        setSelected(candidate.id);
+                        setTab("map");
+                        setScanning(false);
+                      }}
+                    />
+                  </View>
+                ))}
+                {!scanResult.candidates.length && (
+                  <Text style={styles.muted}>
+                    No nearby record was found. Enable location or register this
+                    tree if it is new.
+                  </Text>
+                )}
+                <Button
+                  title="Register a new tree"
+                  onPress={() => {
+                    setScanning(false);
+                    setRegister(true);
+                  }}
+                />
+              </>
+            )}
+            <Button title="Close scan" onPress={() => setScanning(false)} />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
       <Modal
         visible={register}
         animationType="slide"
