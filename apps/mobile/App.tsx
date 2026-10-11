@@ -1,5 +1,5 @@
 import "react-native-url-polyfill/auto";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -78,8 +78,10 @@ export default function App() {
   const me = data?.players.find((p) => p.id === user);
   const demo = demoBuild && data?.config.demo_mode;
   const player = useAudioPlayer(null, { keepAudioSessionActive: true });
-  useEffect(
+  const playbackGeneration = useRef(0);
+  useLayoutEffect(
     () => () => {
+      playbackGeneration.current++;
       try {
         if (playbackFile.current?.exists) playbackFile.current.delete();
       } catch {}
@@ -200,13 +202,16 @@ export default function App() {
   }
   async function voice() {
     if (!tree) return;
+    const generation = ++playbackGeneration.current;
+    const cancelled = () => generation !== playbackGeneration.current;
     const r = await api.call("tree-voice", { tree_id: tree.id });
+    if (cancelled()) return;
     if (r.url) {
       player.pause();
       const cached = cacheVoice(r.url);
       if (playbackFile.current?.exists) playbackFile.current.delete();
       playbackFile.current = cached.file;
-      await playTreeAudio(player, cached.uri);
+      await playTreeAudio(player, cached.uri, cancelled);
     } else if (r.source === "simulated") Speech.speak(r.message);
     else
       Alert.alert(
@@ -554,6 +559,18 @@ export default function App() {
             </View>
           </>
         )}
+        {tab === "leaderboard" && (
+          <View style={styles.card}>
+            <Text style={styles.title}>How care points grow</Text>
+            <Text>Points = round(B × (1 + 0.6N + 0.4√G) × (1 − O)²)</Text>
+            <Text style={styles.muted}>
+              B is the base award ({data?.config.care_points ?? 10}). N measures
+              initial dryness, G measures useful moisture gain, and O measures
+              overshoot beyond the recovery target. Only verified recovery earns
+              points, capped at twice the base. Extra water lowers the reward.
+            </Text>
+          </View>
+        )}
         {tab === "leaderboard" &&
           data?.players.map((p, i) => (
             <View style={styles.card} key={p.id}>
@@ -783,6 +800,7 @@ export default function App() {
             accessibilityLabel={label}
             accessibilityState={{ selected: tab === id }}
             onPress={() => {
+              playbackGeneration.current++;
               player.pause();
               setTab(id);
             }}

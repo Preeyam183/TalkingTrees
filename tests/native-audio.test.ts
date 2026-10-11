@@ -24,14 +24,17 @@ function player() {
     isLoaded: false,
     volume: 0,
     muted: true,
-    currentStatus: { error: null as string | null },
+    currentStatus: { error: null as string | null, playing: false },
     pause: () => observed.calls.push("pause"),
     replace: () => observed.calls.push("replace"),
     seekTo: vi.fn(async () => {
       expect(p.isLoaded).toBe(true);
       observed.calls.push("seek");
     }),
-    play: vi.fn(() => observed.calls.push("play")),
+    play: vi.fn(() => {
+      observed.calls.push("play");
+      p.currentStatus.playing = true;
+    }),
   };
   return p;
 }
@@ -48,13 +51,7 @@ describe("native reply playback", () => {
     p.isLoaded = true;
     await vi.advanceTimersByTimeAsync(100);
     await pending;
-    expect(observed.calls).toEqual([
-      "pause",
-      "speaker",
-      "replace",
-      "seek",
-      "play",
-    ]);
+    expect(observed.calls).toEqual(["pause", "speaker", "replace", "play"]);
     expect(observed.mode).toMatchObject({
       allowsRecording: false,
       playsInSilentMode: true,
@@ -63,6 +60,54 @@ describe("native reply playback", () => {
     });
     expect(p.volume).toBe(1);
     expect(p.muted).toBe(false);
+    expect(p.seekTo).not.toHaveBeenCalled();
+  });
+  it("never accesses a released player when a pending task was cancelled", async () => {
+    const released = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("Native shared object released");
+        },
+      },
+    );
+    await expect(
+      playTreeAudio(released as AudioPlayer, "file:///reply.mp3", () => true),
+    ).resolves.toBeUndefined();
+  });
+  it("checks cancellation before reading native status after a loading delay", async () => {
+    vi.useFakeTimers();
+    const p = player();
+    let released = false;
+    const native = new Proxy(p, {
+      get(target, prop, receiver) {
+        if (released) throw new Error("Native shared object released");
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const pending = playTreeAudio(
+      native as unknown as AudioPlayer,
+      "file:///reply.mp3",
+      () => released,
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    released = true;
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(pending).resolves.toBeUndefined();
+    expect(p.play).not.toHaveBeenCalled();
+  });
+  it("reports a player that loads but never starts instead of claiming it is speaking", async () => {
+    vi.useFakeTimers();
+    const p = player();
+    p.isLoaded = true;
+    p.play.mockImplementation(() => {});
+    const pending = playTreeAudio(
+      p as unknown as AudioPlayer,
+      "file:///reply.mp3",
+    );
+    const assertion = expect(pending).rejects.toThrow("did not start playing");
+    await vi.advanceTimersByTimeAsync(10100);
+    await assertion;
   });
   it("does not play a reply after the voice screen has closed", async () => {
     vi.useFakeTimers();

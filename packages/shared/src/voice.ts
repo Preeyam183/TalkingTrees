@@ -1,6 +1,11 @@
 /** Silence ends a turn only after speech; background noise and empty turns are ignored. */
 export class VoiceTurnDetector {
-  constructor(private readonly minimumSpeechDb = -48) {}
+  constructor(
+    private readonly minimumSpeechDb = -48,
+    private readonly calibrationMs = 0,
+    private readonly maximumTurnMs = 45000,
+  ) {}
+  private calibration: number[] = [];
   private started = 0;
   private lastSpeech = 0;
   private speechMs = 0;
@@ -10,11 +15,18 @@ export class VoiceTurnDetector {
     this.started = this.previous = now;
     this.lastSpeech = this.speechMs = 0;
     this.floor = this.minimumSpeechDb - 12;
+    this.calibration = [];
   }
   sample(db: number, now: number): "continue" | "send" | "idle" {
     if (!Number.isFinite(db)) return "continue";
     const elapsed = Math.min(200, Math.max(0, now - this.previous));
     this.previous = now;
+    if (now - this.started <= this.calibrationMs) {
+      this.calibration.push(db);
+      const levels = [...this.calibration].sort((a, b) => a - b);
+      this.floor = levels[Math.floor((levels.length - 1) * 0.2)];
+      return "continue";
+    }
     const threshold = Math.max(this.minimumSpeechDb, this.floor + 12);
     if (db > threshold) {
       this.speechMs += elapsed;
@@ -23,7 +35,7 @@ export class VoiceTurnDetector {
       this.floor = Math.min(-40, this.floor * 0.95 + db * 0.05);
     }
     if (this.speechMs >= 400 && now - this.lastSpeech >= 1400) return "send";
-    if (now - this.started >= 45000)
+    if (now - this.started >= this.maximumTurnMs)
       return this.speechMs >= 400 ? "send" : "idle";
     return "continue";
   }

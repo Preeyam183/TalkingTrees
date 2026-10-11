@@ -31,6 +31,9 @@ export async function playTreeAudio(
   uri: string,
   cancelled: () => boolean = () => false,
 ) {
+  // Cancellation must precede every native access: hook-owned players are
+  // released by Expo during unmount, including while an await is pending.
+  if (cancelled()) return;
   player.pause();
   await setAudioModeAsync(speakerMode);
   if (cancelled()) return;
@@ -38,10 +41,11 @@ export async function playTreeAudio(
   player.muted = false;
   player.replace({ uri });
   const deadline = Date.now() + 15000;
-  while (!player.isLoaded) {
+  while (true) {
     if (cancelled()) return;
     const error = player.currentStatus.error;
     if (error) throw new Error(`Audio could not load: ${error}`);
+    if (player.isLoaded) break;
     if (Date.now() >= deadline)
       throw new Error(
         "The reply could not load. Tap Replay reply to try again.",
@@ -49,6 +53,21 @@ export async function playTreeAudio(
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   if (cancelled()) return;
-  await player.seekTo(0);
-  if (!cancelled()) player.play();
+  // replace() creates a new item at zero. A redundant native seek can hang
+  // while iOS transitions from the microphone session to playback.
+  player.play();
+  const startDeadline = Date.now() + 10000;
+  while (true) {
+    if (cancelled()) return;
+    const status = player.currentStatus;
+    if (status.error) throw new Error(`Audio playback failed: ${status.error}`);
+    if (status.playing || status.didJustFinish) return;
+    if (Date.now() >= startDeadline) {
+      player.pause();
+      throw new Error(
+        "The reply did not start playing. Tap Replay reply to retry.",
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }

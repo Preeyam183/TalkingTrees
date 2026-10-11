@@ -770,6 +770,17 @@ export default function App() {
           <section className="leaderboard">
             <h2>Growing together</h2>
             <p>Care for your grove and grow together.</p>
+            <details>
+              <summary>How care points grow</summary>
+              <p>Points = round(B × (1 + 0.6N + 0.4√G) × (1 − O)²)</p>
+              <p>
+                B is the base award ({data?.config.care_points ?? 10}). N
+                measures initial dryness, G measures useful moisture gain, and O
+                measures overshoot beyond the recovery target. Only verified
+                recovery earns points, capped at twice the base. Extra water
+                lowers the reward.
+              </p>
+            </details>
             {data?.players.map((p, i) => (
               <div key={p.id} className="rank">
                 <span className="rank-number">0{i + 1}</span>

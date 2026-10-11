@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -32,6 +32,21 @@ export function TreeSettings({
   const openRef = useRef(open);
   openRef.current = open;
   const player = useAudioPlayer(null, { keepAudioSessionActive: true });
+  const alive = useRef(true);
+  const previewGeneration = useRef(0);
+  useLayoutEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      previewGeneration.current++;
+    };
+  }, []);
+  function close() {
+    previewGeneration.current++;
+    openRef.current = false;
+    player.pause();
+    setOpen(false);
+  }
   useEffect(() => {
     if (!open) return;
     let active = true;
@@ -55,7 +70,6 @@ export function TreeSettings({
       });
     return () => {
       active = false;
-      player.pause();
     };
   }, [open, tree.id]);
   async function save() {
@@ -66,8 +80,10 @@ export function TreeSettings({
         "update-tree-settings",
         treeSettingsSchema.parse({ tree_id: tree.id, name, voice_id: voice }),
       );
-      setOpen(false);
-      onSaved();
+      if (alive.current) {
+        close();
+        onSaved();
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -75,14 +91,23 @@ export function TreeSettings({
     }
   }
   async function preview(uri: string) {
+    const generation = ++previewGeneration.current;
     setBusy(true);
     setError("");
     try {
-      await playTreeAudio(player, uri, () => !openRef.current);
+      await playTreeAudio(
+        player,
+        uri,
+        () =>
+          !alive.current ||
+          !openRef.current ||
+          generation !== previewGeneration.current,
+      );
     } catch (e) {
-      setError((e as Error).message);
+      if (alive.current && generation === previewGeneration.current)
+        setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   }
   return (
@@ -92,11 +117,7 @@ export function TreeSettings({
         icon="settings-outline"
         onPress={() => setOpen(true)}
       />
-      <Modal
-        visible={open}
-        animationType="slide"
-        onRequestClose={() => setOpen(false)}
-      >
+      <Modal visible={open} animationType="slide" onRequestClose={close}>
         <SafeAreaView style={s.safe}>
           <ScrollView contentContainerStyle={s.content}>
             <Text style={s.heading}>Make this tree yours</Text>
@@ -163,7 +184,7 @@ export function TreeSettings({
                 onPress={() => void save()}
                 disabled={busy || !settings || !name.trim()}
               />
-              <ActionTile title="Cancel" onPress={() => setOpen(false)} />
+              <ActionTile title="Cancel" onPress={close} />
             </View>
           </ScrollView>
         </SafeAreaView>

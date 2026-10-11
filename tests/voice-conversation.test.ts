@@ -9,6 +9,24 @@ import {
 } from "../packages/shared/src/index";
 
 describe("automatic voice turns", () => {
+  it("calibrates native room noise so it does not keep a spoken turn open", () => {
+    const detector = new VoiceTurnDetector(-60, 500, 20000);
+    detector.reset(0);
+    for (let t = 100; t <= 2000; t += 100)
+      expect(detector.sample(-48, t)).toBe("continue");
+    for (let t = 2100; t <= 3000; t += 100)
+      expect(detector.sample(-24, t)).toBe("continue");
+    expect(detector.sample(-48, 4300)).toBe("continue");
+    expect(detector.sample(-48, 4400)).toBe("send");
+  });
+  it("bounds native turns at 20 seconds when continuous sound masks a pause", () => {
+    const detector = new VoiceTurnDetector(-60, 500, 20000);
+    detector.reset(0);
+    for (let t = 100; t <= 500; t += 100) detector.sample(-70, t);
+    for (let t = 600; t < 20000; t += 100)
+      expect(detector.sample(-20, t)).toBe("continue");
+    expect(detector.sample(-20, 20000)).toBe("send");
+  });
   it("detects quieter native microphone levels without sending empty turns", () => {
     const detector = new VoiceTurnDetector(-60);
     detector.reset(0);

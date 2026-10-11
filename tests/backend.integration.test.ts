@@ -92,6 +92,7 @@ describe.skipIf(!enabled)("local database + edge integration", () => {
     expect(points.n).toBe(0);
     const recovery = await read(43);
     expect(recovery.result.completed).toBe(true);
+    expect(recovery.result.points).toBe(13);
     const [t] = await sql`select owner_id from trees where id=${tree}`;
     expect(t.owner_id).toBe(player);
     const [territory] =
