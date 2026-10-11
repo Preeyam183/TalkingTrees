@@ -98,7 +98,10 @@ Responses include `queried_at`, `period`, optional `comparison_period`, `source`
 ## Provider keys and behavior
 
 - `GEMINI_API_KEY`, optional `GEMINI_MODEL`: identification, structured analytics planning, dialogue, and summary wording. Missing/error responses use deterministic text; photo identification remains unidentified in connected mode.
-- `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, optional `ELEVENLABS_MODEL`: generated voice stored in `tree-audio`. Text works when voice is unavailable.
+- `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, optional `ELEVENLABS_MODEL`: speech replies return authenticated, ephemeral MP3 data to the requesting client, avoiding public storage dependencies. Native clients cache one current reply and remove it on unmount. Text works when voice is unavailable.
+- `ELEVENLABS_STT_MODEL` defaults to `scribe_v2`. The key needs Text to Speech and Speech to Text permissions; selecting voices through the setup check also needs Read Voices.
+- `ELEVENLABS_TREE_VOICE_<TREE_UUID_WITH_UNDERSCORES>` gives a specific tree a stable voice. Example variable name: `ELEVENLABS_TREE_VOICE_b7000000_0000_4000_8000_000000000001`. A comma-separated `ELEVENLABS_VOICE_IDS` pool is selected deterministically by tree ID. Priority is tree override, voice pool, personality override, then `ELEVENLABS_VOICE_ID`.
+- Personality overrides are `ELEVENLABS_VOICE_ID_WARM`, `_WATCHFUL`, `_WATERLOGGED`, `_QUIET`, and `_SOLEMN`. Moisture-dependent speech speed/expression does not change the selected per-tree voice. `connected:setup` imports these backend-only variables from root `.env`.
 - `TIGER_DATABASE_URL`: connected historical persistence/querying.
 - `APP_MODE=connected`: required for live integrations. Demo additionally requires database `demo_mode=true` and a development client build to expose simulator controls.
 
@@ -118,6 +121,8 @@ no sensor value controls generation settings. See Google's
 [model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash) and
 [GenerationConfig reference](https://ai.google.dev/api/generate-content#v1beta.GenerationConfig).
 Review model support before overriding `GEMINI_MODEL`.
+
+The October 11 hosted configuration uses `gemini-3.1-flash-lite`, verified within the provider timeout. Tree chat uses a separate structured schema `{message, fact_ids}`: casual replies of up to 1000 characters with references to server-authored database facts. New numeric claims and invalid references are rejected; the clients expose original facts in a separate panel. Traits and a stable character style differentiate trees. A species `dialogue_care_profile.highMoisturePct` can mark a fresh reading as wet for conversation; this does not create a watering request or change game eligibility. Missing/stale measurements remain uncertain.
 
 The server rejects malformed/extra fields, wrong moods, empty/oversized messages,
 missing first-person wording and missing uncertainty wording when measurements are

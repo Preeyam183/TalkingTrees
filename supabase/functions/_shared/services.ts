@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import postgres from "postgres";
+import { stableTreeIndex } from "../../../packages/shared/src/voice.ts";
 export const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -20,19 +21,35 @@ export async function isDemo() {
     Deno.env.get("APP_MODE") === "demo" && (await config()).demo_mode === true
   );
 }
-export type TreePersonality = "warm" | "watchful" | "quiet" | "solemn";
+export type TreePersonality =
+  "warm" | "watchful" | "waterlogged" | "quiet" | "solemn";
 export function personalityForTree(state: { status: string }): TreePersonality {
   if (state.status === "dead") return "solemn";
   if (state.status === "unknown") return "quiet";
   if (state.status === "thirsty") return "watchful";
   return "warm";
 }
-export function elevenLabsVoiceId(personality: string | null | undefined) {
+export function elevenLabsVoiceId(
+  personality: string | null | undefined,
+  treeId?: string,
+) {
   const normalized = personality?.trim().toUpperCase();
+  const assigned = treeId
+    ? Deno.env.get(`ELEVENLABS_TREE_VOICE_${treeId.replaceAll("-", "_")}`)
+    : undefined;
+  const voices = (Deno.env.get("ELEVENLABS_VOICE_IDS") || "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
   return (
+    assigned ||
+    (treeId && voices.length
+      ? voices[stableTreeIndex(treeId, voices.length)]
+      : undefined) ||
     (normalized
       ? Deno.env.get(`ELEVENLABS_VOICE_ID_${normalized}`)
-      : undefined) || Deno.env.get("ELEVENLABS_VOICE_ID")
+      : undefined) ||
+    Deno.env.get("ELEVENLABS_VOICE_ID")
   );
 }
 export async function gemini(

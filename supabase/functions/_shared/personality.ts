@@ -17,6 +17,7 @@ const careSchema = z
       .optional(),
     comfortableTemperatureC: range.optional(),
     suitableLightRaw: range.optional(),
+    highMoisturePct: z.number().min(0).max(100).optional(),
   })
   .strict();
 export async function personalityParams(t: any) {
@@ -121,14 +122,18 @@ export async function personalityParams(t: any) {
       personalityTraits: species?.personality_traits ?? ["gentle", "observant"],
     },
     {
-      // Only the existing hysteresis engine supplies moisture classification.
+      // Hysteresis owns care eligibility; a configured high threshold affects dialogue only.
       moistureStatus: !canonicalFresh
         ? "unknown"
         : t.status === "thirsty"
           ? "thirsty"
-          : t.status === "healthy"
-            ? "okay"
-            : "unknown",
+          : profile.highMoisturePct != null &&
+              t.moisture != null &&
+              Number(t.moisture) >= profile.highMoisturePct
+            ? "wet"
+            : t.status === "healthy"
+              ? "okay"
+              : "unknown",
       thermalStatus: thermal,
       lightStatus: light,
       // Raw packets have no device timestamp or normalization correlation; no defensible trend yet.

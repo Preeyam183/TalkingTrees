@@ -19,7 +19,8 @@ import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import * as Speech from "expo-speech";
 import * as Crypto from "expo-crypto";
-import { useAudioPlayer } from "expo-audio";
+import { File, Paths } from "expo-file-system";
+import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { type WateringSession, type InsightResponse } from "@treequest/shared";
 import { api, client, demoBuild, url } from "./client";
 import AuthScreen from "./AuthScreen";
@@ -29,6 +30,14 @@ import {
   connectionMessage,
   type IdentificationResponse,
 } from "@treequest/shared";
+const moistureLabel = (value: number | null) =>
+  value == null
+    ? "Unknown"
+    : value >= 80
+      ? "High moisture"
+      : value < 30
+        ? "Dry"
+        : "Comfortable";
 const stamp = (s: string | null) =>
   s ? new Date(s).toLocaleString() : "No readings";
 function Button({
@@ -57,7 +66,6 @@ export default function App() {
     > | null>(null),
     [user, setUser] = useState<string | null>(null),
     [authReady, setAuthReady] = useState(false),
-    [scanning, setScanning] = useState(false),
     [scanResult, setScanResult] = useState<IdentificationResponse | null>(null),
     [selected, setSelected] = useState<string | null>(null),
     [tab, setTab] = useState("map"),
@@ -77,6 +85,7 @@ export default function App() {
     [loc, setLoc] = useState<{ lat: number; lng: number } | null>(null),
     [realtime, setRealtime] = useState(false);
   const userRef = useRef(user);
+  const playbackFile = useRef<File | null>(null);
   userRef.current = user;
   useEffect(() => {
     setInsight(null);
@@ -85,6 +94,14 @@ export default function App() {
   const me = data?.players.find((p) => p.id === user);
   const demo = demoBuild && data?.config.demo_mode;
   const player = useAudioPlayer(null);
+  useEffect(
+    () => () => {
+      try {
+        if (playbackFile.current?.exists) playbackFile.current.delete();
+      } catch {}
+    },
+    [],
+  );
   async function refresh() {
     if (!userRef.current) return;
     const requestedUser = userRef.current;
@@ -124,7 +141,7 @@ export default function App() {
         setData(null);
         setSelected(null);
         setRegister(false);
-        setScanning(false);
+        setTab("map");
       }
     });
     const channel = client
@@ -208,10 +225,28 @@ export default function App() {
     if (!tree) return;
     const r = await api.call("tree-voice", { tree_id: tree.id });
     if (r.url) {
-      player.replace(r.url);
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      });
+      let audioUri = r.url;
+      if (r.url.startsWith("data:")) {
+        if (playbackFile.current?.exists) playbackFile.current.delete();
+        const file = new File(Paths.cache, `tree-intro-${Date.now()}.mp3`);
+        file.create();
+        file.write(new Uint8Array(decodeBase64(r.url.split(",")[1])));
+        playbackFile.current = file;
+        audioUri = file.uri;
+      }
+      player.replace(audioUri);
       player.play();
     } else if (r.source === "simulated") Speech.speak(r.message);
-    else Alert.alert("Voice unavailable", r.message);
+    else
+      Alert.alert(
+        "Voice unavailable",
+        r.reason ||
+          "Install ElevenLabs credentials on the hosted backend. Your tree’s message is available as text.",
+      );
   }
   async function ask(q = question) {
     setQuestion(q);
@@ -336,7 +371,7 @@ export default function App() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={styles.brand}>♧ treequest.</Text>
+          <Text style={styles.brand}>♧ Branch Out</Text>
           {user && (
             <Button title="Sign out" onPress={() => client.auth.signOut()} />
           )}
@@ -362,23 +397,14 @@ export default function App() {
             territories
           </Text>
         </View>
-        <View style={styles.row}>
-          {["map", "insights", "leaderboard"].map((t) => (
-            <Button
-              key={t}
-              title={t === "insights" ? "Ask trees" : t}
-              onPress={() => setTab(t)}
-            />
-          ))}
-        </View>
         {tab === "map" && (
           <>
             <MapView
               key={data?.trees[0]?.id ?? "empty-grove"}
               style={styles.map}
               initialRegion={{
-                latitude: data?.trees[0]?.lat ?? 40.772,
-                longitude: data?.trees[0]?.lng ?? -73.966,
+                latitude: data?.trees[0]?.lat ?? 40.49875,
+                longitude: data?.trees[0]?.lng ?? -74.44625,
                 latitudeDelta: 0.012,
                 longitudeDelta: 0.02,
               }}
@@ -459,7 +485,8 @@ export default function App() {
                     />
                   ))}
                 <Text style={styles.muted}>
-                  {tree.species_name ?? "Unidentified"} · {tree.status}
+                  {tree.species_name ?? "Unidentified"} ·{" "}
+                  {moistureLabel(tree.moisture)}
                 </Text>
                 <Text>
                   Owner:{" "}
@@ -481,7 +508,10 @@ export default function App() {
                   disabled={!user || busy}
                   onPress={() => run(voice)}
                 />
-                <TreeChat key={`${user}:${tree.id}`} tree={tree} />
+                <Button
+                  title={`Chat with ${tree.name}`}
+                  onPress={() => setTab("chat")}
+                />
                 <Text style={styles.muted}>
                   Recovery threshold {tree.recovery_pct ?? "unconfigured"}%.
                   Partial watering earns no points.
@@ -554,7 +584,7 @@ export default function App() {
               disabled={busy}
               onPress={() => {
                 setScanResult(null);
-                setScanning(true);
+                setTab("camera");
               }}
             />
             <Button
@@ -566,7 +596,7 @@ export default function App() {
             {data?.trees.map((t) => (
               <Button
                 key={t.id}
-                title={`${t.name} · ${t.status} · ${t.moisture ?? "—"}%`}
+                title={`${t.name} · ${moistureLabel(t.moisture)} · ${t.moisture ?? "—"}%`}
                 onPress={() => setSelected(t.id)}
               />
             ))}
@@ -660,15 +690,31 @@ export default function App() {
             )}
           </View>
         )}
-        <Button title="Refresh grove" onPress={refresh} />
-      </ScrollView>
-      <Modal
-        visible={scanning}
-        animationType="slide"
-        onRequestClose={() => setScanning(false)}
-      >
-        <SafeAreaView style={styles.safe}>
-          <ScrollView contentContainerStyle={styles.container}>
+        {tab === "chat" && (
+          <>
+            <Text style={styles.title}>Your tree friends</Text>
+            <View style={styles.row}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {data?.trees.map((t) => (
+                  <Button
+                    key={t.id}
+                    title={`${selected === t.id ? "✓ " : ""}${t.name}`}
+                    onPress={() => setSelected(t.id)}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+            {tree ? (
+              <TreeChat key={`${user}:${tree.id}`} tree={tree} />
+            ) : (
+              <Text style={styles.muted}>
+                Choose a tree to start a conversation.
+              </Text>
+            )}
+          </>
+        )}
+        {tab === "camera" && (
+          <>
             <Text style={styles.heading}>Meet a tree</Text>
             <Text style={styles.muted}>
               Take a photo to identify its species and find nearby trees in your
@@ -711,7 +757,6 @@ export default function App() {
                       onPress={() => {
                         setSelected(candidate.id);
                         setTab("map");
-                        setScanning(false);
                       }}
                     />
                   </View>
@@ -725,16 +770,46 @@ export default function App() {
                 <Button
                   title="Register a new tree"
                   onPress={() => {
-                    setScanning(false);
+                    setTab("map");
                     setRegister(true);
                   }}
                 />
               </>
             )}
-            <Button title="Close scan" onPress={() => setScanning(false)} />
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+          </>
+        )}
+        <Button title="Refresh grove" onPress={refresh} />
+      </ScrollView>
+      <View style={styles.tabBar} accessibilityRole="tablist">
+        {(
+          [
+            ["map", "⌂", "Home"],
+            ["chat", "◌", "Chat"],
+            ["leaderboard", "☆", "Scores"],
+            ["camera", "▣", "Camera"],
+            ["insights", "♧", "Insights"],
+          ] as const
+        ).map(([id, icon, label]) => (
+          <Pressable
+            key={id}
+            accessibilityRole="tab"
+            accessibilityLabel={label}
+            accessibilityState={{ selected: tab === id }}
+            onPress={() => {
+              player.pause();
+              setTab(id);
+            }}
+            style={[styles.tabItem, tab === id && styles.tabSelected]}
+          >
+            <Text style={[styles.tabIcon, tab === id && styles.tabActiveText]}>
+              {icon}
+            </Text>
+            <Text style={[styles.tabLabel, tab === id && styles.tabActiveText]}>
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
       <Modal
         visible={register}
         animationType="slide"
@@ -802,7 +877,26 @@ export default function App() {
 }
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f6f8f4" },
-  container: { padding: 20, gap: 12 },
+  container: { padding: 20, gap: 12, paddingBottom: 28 },
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#dce4da",
+    padding: 8,
+    gap: 4,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 8,
+    borderRadius: 14,
+    gap: 3,
+  },
+  tabSelected: { backgroundColor: "#e6efdf" },
+  tabIcon: { fontSize: 24, color: "#758579" },
+  tabLabel: { fontSize: 10, fontWeight: "600", color: "#758579" },
+  tabActiveText: { color: "#244c37" },
   header: {
     flexDirection: "row",
     alignItems: "center",

@@ -62,7 +62,7 @@ export default function AuthScreen() {
         contentContainerStyle={s.page}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={s.brand}>♧ treequest.</Text>
+        <Text style={s.brand}>♧ Branch Out</Text>
         <Text style={s.tagline}>A little care. A living neighborhood.</Text>
         <View style={s.card}>
           <Text style={s.heading}>

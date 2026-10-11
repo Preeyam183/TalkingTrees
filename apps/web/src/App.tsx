@@ -218,7 +218,7 @@ export default function App() {
     return (
       <div className="setup">
         <Leaf size={48} />
-        <h1>Welcome to TreeQuest</h1>
+        <h1>Welcome to Branch Out</h1>
         <p>
           Start local Supabase, then run <code>npm run demo:setup</code> to
           connect the demo.
@@ -237,7 +237,7 @@ export default function App() {
       <div className="auth-page">
         <div className="auth-brand">
           <Leaf size={42} />
-          <h1>treequest.</h1>
+          <h1>Branch Out</h1>
           <p>A little care. A living neighborhood.</p>
         </div>
         <Login onError={setError} demo={devDemo} />
@@ -256,7 +256,7 @@ export default function App() {
             <Leaf size={24} />
           </span>
           <span>
-            treequest<span className="brand-dot">.</span>
+            Branch Out<span className="brand-dot">.</span>
           </span>
         </a>
         <p className="eyebrow">GROW YOUR CORNER OF THE WORLD</p>
@@ -431,7 +431,7 @@ export default function App() {
                   center={
                     data?.trees[0]
                       ? [data.trees[0].lat, data.trees[0].lng]
-                      : [40.772, -73.966]
+                      : [40.49875, -74.44625]
                   }
                   zoom={15}
                   className="map"
@@ -553,9 +553,11 @@ export default function App() {
                         </>
                       )}
                       <span className={`badge ${tree.status}`}>
-                        {tree.status === "thirsty"
-                          ? "Ready for a little care"
-                          : tree.status}
+                        {tree.moisture != null && tree.moisture >= 80
+                          ? "High moisture"
+                          : tree.status === "thirsty"
+                            ? "Dry soil"
+                            : tree.status}
                       </span>
                       <button
                         className="close icon"
@@ -686,7 +688,7 @@ export default function App() {
                           ? "Waiting for sensor verification"
                           : tree.request_id
                             ? `Start a care session · +${data?.config.care_points ?? 10}`
-                            : "No watering needed"}
+                            : "No watering permitted"}
                       </button>
                       {session && (
                         <div className="session" role="status">
@@ -775,7 +777,9 @@ export default function App() {
                   <span className="points">
                     {t.request_id
                       ? `+${data?.config.care_points ?? 10}`
-                      : t.status}
+                      : t.moisture != null && t.moisture >= 80
+                        ? "high moisture"
+                        : t.status}
                     <ArrowUpRight size={17} />
                   </span>
                 </button>
@@ -1137,8 +1141,8 @@ function Registration({
     [speciesId, setSpecies] = useState(""),
     [photo, setPhoto] = useState(""),
     [description, setDescription] = useState(""),
-    [lat, setLat] = useState(location?.lat ?? selected?.lat ?? 40.772),
-    [lng, setLng] = useState(location?.lng ?? selected?.lng ?? -73.969),
+    [lat, setLat] = useState(location?.lat ?? selected?.lat ?? 40.49875),
+    [lng, setLng] = useState(location?.lng ?? selected?.lng ?? -74.44625),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [nearby, setNearby] = useState<{ id: string; name: string }[]>([]);

@@ -26,7 +26,7 @@ export const moistureCalibrationSchema = z
 export type MoistureCalibration = z.infer<typeof moistureCalibrationSchema>;
 export type SpeciesProfile = { name: string; personalityTraits: string[] };
 export type TrustedTreeState = {
-  moistureStatus: "thirsty" | "okay" | "unknown";
+  moistureStatus: "thirsty" | "wet" | "okay" | "unknown";
   thermalStatus: "hot" | "cold" | "comfortable" | "unknown";
   lightStatus: "low" | "suitable" | "intense" | "unknown";
   trend: "improving" | "stable" | "worsening" | "unknown";
@@ -87,6 +87,7 @@ export function deriveTreePersonalityParams(
       : signals.moisture === "unknown"
         ? "uncertain"
         : signals.moisture === "thirsty" ||
+            signals.moisture === "wet" ||
             signals.thermal === "hot" ||
             signals.thermal === "cold" ||
             signals.light === "intense" ||
@@ -117,6 +118,13 @@ export function deriveTreePersonalityParams(
 export type TreePersonalityParams = ReturnType<
   typeof deriveTreePersonalityParams
 >;
+export function conversationPersonality(p: TreePersonalityParams) {
+  if (p.lifecycle === "dead") return "solemn";
+  if (p.lifecycle === "inactive" || p.mood === "uncertain") return "quiet";
+  if (p.care_signals.moisture === "wet") return "waterlogged";
+  if (p.mood === "concerned") return "watchful";
+  return "warm";
+}
 export function fallbackTreeMessage(p: TreePersonalityParams) {
   if (p.lifecycle === "dead")
     return "My death has been confirmed. Thank you for caring for the grove.";
@@ -128,8 +136,10 @@ export function fallbackTreeMessage(p: TreePersonalityParams) {
     return "I'm unsure how I'm doing: my moisture reading is unavailable. Please check my sensors and calibration.";
   const main =
     p.care_signals.moisture === "thirsty"
-      ? "I'm feeling thirsty."
-      : "My moisture state looks okay.";
+      ? "I'm feeling parched today — a little less sparkle in my leaves."
+      : p.care_signals.moisture === "wet"
+        ? "I'm feeling a bit soggy around the roots. Let's skip any extra water."
+        : "I'm feeling pretty good today. Nice to have you around!";
   return `${main} ${p.unknown_readings.length ? "Some readings are unknown. " : ""}${p.watering_allowed ? "Check nearby care-session eligibility in the app." : "Please check my care status before watering."}`;
 }
 export const treeMessageSchema = z

@@ -1,4 +1,4 @@
-# TreeQuest
+# Branch Out
 
 A tree-care territory game: inspect a real tree, start a nearby care session, and capture it only after authenticated hardware evidence **and** sensor recovery. Partial watering earns nothing. Supabase owns game state; Tiger Data stores delivered historical readings for Ask My Trees.
 
@@ -47,7 +47,7 @@ npm run demo:reset
 
 This resets **only the local project database**. Re-run `npm run backend` if the local stack restart disconnects its serving process. Do not use demo reset commands against a hosted environment.
 
-Connected provider credentials for local Edge Functions belong in `supabase/.env.local`, because `npm run backend` loads that file. The root `.env` is not loaded by the Edge Function server. Use `ELEVENLABS_VOICE_ID_WARM`, `ELEVENLABS_VOICE_ID_WATCHFUL`, `ELEVENLABS_VOICE_ID_QUIET`, and `ELEVENLABS_VOICE_ID_SOLEMN` for personality-specific voices; `ELEVENLABS_VOICE_ID` remains the fallback.
+Connected provider credentials for local Edge Functions belong in `supabase/.env.local`, because `npm run backend` loads that file. The root `.env` is not loaded by the Edge Function server. See [provider configuration](docs/OPERATIONS.md#provider-keys-and-behavior) for per-tree voices and personality overrides; `ELEVENLABS_VOICE_ID` remains the fallback.
 
 ## Expo mobile
 
@@ -59,7 +59,7 @@ Use an Expo SDK 57-compatible development client or Expo Go build. Press `i` for
 
 Start mobile from the repository root with `npm run mobile -- --lan --clear`, then open the newly displayed QR code. This explicitly selects `apps/mobile` so Expo loads its app configuration and environment. The root package also declares the mobile entrypoint, and a root `App.tsx` forwards older Expo Go entry URLs to the same app. Recheck the mobile Supabase URL whenever your computer changes networks.
 
-The native app includes maps, player authentication, tree details, camera/library registration, GPS proximity, verified watering, leaderboard, dialogue/audio, and Ask My Trees. Development demo builds explicitly simulate location and hardware in the tree panel. Permission denial produces an actionable error. Native maps in standalone Android builds require your own Google Maps SDK configuration; the browser demo uses OpenStreetMap tiles without an API key.
+The native app has persistent bottom tabs for **Home**, **Chat**, **Scores**, **Camera**, and **Insights**. It includes maps, player authentication, tree details, camera/library registration, GPS proximity, verified watering, leaderboard, dialogue/audio, and Ask My Trees. Development demo builds explicitly simulate location and hardware in the tree panel. Permission denial produces an actionable error. Native maps in standalone Android builds require your own Google Maps SDK configuration; the browser demo uses OpenStreetMap tiles without an API key.
 
 ```sh
 cd apps/mobile
@@ -137,7 +137,7 @@ npx deno check --config supabase/functions/deno.json supabase/functions/api/inde
 
 ## Integration limits
 
-External-provider credentials and real hardware are supplied by the team. Connected Gemini/ElevenLabs responses, Tiger Data TLS/ingestion, and physical-device proximity/sensor calibration require validation with those credentials/devices. Demo analytics uses only simulated readings marked delivered; connected analytics returns unavailable history when Tiger Data fails.
+Hosted Gemini chat/image identification and ElevenLabs transcription/replies were verified on October 11, 2026, including two automatic browser voice turns. Native bundles were exported, but physical-device microphone, playback, camera, GPS, and sensor calibration still require device validation. This checkout's hosted Tiger URL is not configured; connected analytics returns unavailable history. See [recorded validation](docs/VALIDATION.md).
 
 Map tiles and optional web fonts use external public services; the local demo requires no API credentials but is not a fully offline basemap. Device speech varies by installed voices. The prototype does not implement firmware, anti-spoofing attestation, app-store distribution, or production deployment.
 
@@ -163,10 +163,29 @@ npm run dev
 
 `connected:setup` requires a Supabase CLI login with project access. It updates both ignored client files, installs nonempty provider settings, and configures matching worker credentials in Vault. It does not apply migrations or seeds. It leaves existing hosted provider secrets unchanged when a corresponding local field is empty. For a new project, apply migrations first, without demo seeds. This setup requires a CLI version supporting `supabase db query` (v2.79+).
 
-Select a database tree to open **Talk to [tree name]**. The conversation reads its current record, caretaker, sensor freshness, care eligibility, and latest raw Arduino packet. Gemini selects relevant server-authored facts and personality wording; it cannot alter measurements, ownership, or scoring. Historical questions read delivered Tiger Data for trees the signed-in player currently owns. Unavailable history and undelivered readings remain explicit.
+Select a database tree to open **Talk to [tree name]**. The conversation reads its current record, caretaker, sensor freshness, care eligibility, and latest raw Arduino packet. Gemini writes short, casual replies with stable tree character traits and sensor-dependent moods. A **Readings and care** panel shows the original relevant database facts. Generated numbers and fact references are validated; generated language never alters measurements, ownership, or scoring. Historical questions read delivered Tiger Data for trees the signed-in player currently owns. Unavailable history and undelivered readings remain explicit.
 
-**Voice conversation** opens an animated circular voice screen. Tap to record and tap again to send, with a 60-second maximum. The backend uses ElevenLabs `ELEVENLABS_STT_MODEL` (default `scribe_v2`) for transcription and `ELEVENLABS_MODEL` for spoken replies. Configure `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` or personality-specific voice IDs. Web recording requires HTTPS or localhost and a supported MediaRecorder browser. Native recording requires microphone permission and a compatible Expo client/build. Text remains available when voice fails. Demo playback is labeled device speech; microphone transcription still requires ElevenLabs.
+**Voice conversation** opens an animated circular voice screen and starts listening. After at least 400 ms of detected speech, 1.4 seconds of silence sends the turn automatically. The tree speaks back and then starts listening again. **Pause** and **Resume** control the microphone; closing or backgrounding the screen stops it. A turn is bounded to 45 seconds, and an empty turn pauses instead of sending. The backend uses ElevenLabs `ELEVENLABS_STT_MODEL` (default `scribe_v2`) for transcription and `ELEVENLABS_MODEL` for spoken replies. Per-tree voice IDs keep each tree's voice distinct; mood changes speech speed and expression. Web recording requires HTTPS or localhost and a supported MediaRecorder browser. Native recording requires microphone permission and a compatible Expo client/build. Text and actionable errors remain available when voice fails. Demo playback is labeled device speech; microphone transcription still requires ElevenLabs.
 
 On mobile, **Scan a tree → Open camera** identifies species with Gemini and uses permitted GPS coordinates to list nearby database candidates, including caretaker and latest calibrated readings. Confirm the physical tree before selecting a record. Species recognition is not proof of unique tree identity, living condition, or watering. Without GPS, species identification is still available but no location candidates are returned. If the tree is new, use registration.
 
 Raw Pi uploads appear in `hardware_readings` and in conversation facts. They do not populate calibrated moisture, generate watering requests, earn points, or enter Tiger history. Use the hardware guide and Pi bridge's calibrated live mode with measured temperature to send canonical readings. A species recovery profile and valid authenticated watering evidence are necessary for scoring. Existing PostgreSQL game rules remain authoritative.
+
+## Rutgers presentation grove
+
+The hosted project now contains **Birch**, **Maple**, and **Willow**, assigned to Preeyam's existing account near Old Queens, Rutgers–New Brunswick. Their moisture values are 16%, 52%, and 92% respectively. The Arduino tree has moved to the same grove; its tree/device IDs and authentication remain unchanged. These additional readings are manually authored, recorded as `manual_scenario` with `hardware_observation=false`, and do not award points, create watering evidence, or claim delivered Tiger history. Their species profiles are illustrative.
+
+Before presenting, refresh the three manually supplied readings, then start the clients:
+
+```sh
+npm run presentation:refresh
+npm run dev
+```
+
+In another terminal:
+
+```sh
+npm run mobile -- --lan --clear
+```
+
+Sign in with Preeyam's existing account. Both clients use the deployed hosted API, so `supabase start` and `npm run backend` are unnecessary for this flow. Refresh readings again after 30 minutes if the presentation continues; stale readings deliberately produce an uncertain personality. The refresh command targets this project's three scenario records only. It is an explicit administrator operation, not a migration or production seed. [Presentation SQL](scripts/presentation-trees.sql) contains the IDs and JSON payload construction; [relocation SQL](scripts/rutgers-grove.sql) records the campus location change.

@@ -4,6 +4,7 @@ import {
   type Tree,
   type ChatMessage,
   type ChatResponse,
+  VoiceTurnDetector,
 } from "@treequest/shared";
 import { api } from "./client";
 
@@ -14,10 +15,41 @@ export default function TreeChat({ tree }: { tree: Tree }) {
     [phase, setPhase] = useState("ready"),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [source, setSource] = useState("");
+    [source, setSource] = useState(""),
+    [paused, setPaused] = useState(false);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [facts, setFacts] = useState<string[]>([]);
   const voiceOpen = useRef(voice);
   voiceOpen.current = voice;
   const startingMicrophone = useRef(false);
+  const lock = useRef(false),
+    generation = useRef(0);
+  const historyRef = useRef(messages);
+  historyRef.current = messages;
+  const monitor = useRef<ReturnType<typeof setInterval> | null>(null);
+  const context = useRef<AudioContext | null>(null);
+  const turn = useRef(new VoiceTurnDetector());
+  function stopMonitor() {
+    if (monitor.current) clearInterval(monitor.current);
+    monitor.current = null;
+    void context.current?.close().catch(() => {});
+    context.current = null;
+  }
+  function close() {
+    generation.current++;
+    voiceOpen.current = false;
+    setVoice(false);
+    stopMonitor();
+    audio.current?.pause();
+    window.speechSynthesis?.cancel();
+    if (recorder.current?.state === "recording") {
+      recorder.current.onstop = null;
+      recorder.current.stop();
+    }
+    stream.current?.getTracks().forEach((t) => t.stop());
+    if (timer.current) clearTimeout(timer.current);
+    setPhase("ready");
+  }
   const recorder = useRef<MediaRecorder | null>(null),
     stream = useRef<MediaStream | null>(null),
     audio = useRef<HTMLAudioElement | null>(null),
@@ -28,6 +60,8 @@ export default function TreeChat({ tree }: { tree: Tree }) {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      generation.current++;
+      stopMonitor();
       if (recorder.current?.state === "recording") recorder.current.stop();
       stream.current?.getTracks().forEach((t) => t.stop());
       audio.current?.pause();
@@ -41,9 +75,21 @@ export default function TreeChat({ tree }: { tree: Tree }) {
       behavior: "smooth",
     });
   }, [messages, busy]);
+  useEffect(() => {
+    if (voice && !paused && phase === "ready" && !busy && !error) void record();
+  }, [voice, paused, phase, busy, error]);
+  useEffect(() => {
+    const hidden = () => {
+      if (document.hidden) close();
+    };
+    document.addEventListener("visibilitychange", hidden);
+    return () => document.removeEventListener("visibilitychange", hidden);
+  }, []);
   async function send(text = draft, spoken = voice) {
-    if (!text.trim() || busy) return;
-    const history = messages.slice(-12);
+    if (!text.trim() || lock.current) return;
+    lock.current = true;
+    const requestGeneration = generation.current;
+    const history = historyRef.current.slice(-12);
     setDraft("");
     setError("");
     setBusy(true);
@@ -56,19 +102,28 @@ export default function TreeChat({ tree }: { tree: Tree }) {
         history,
         voice: spoken,
       });
-      if (!mounted.current) return;
+      if (!mounted.current || requestGeneration !== generation.current) return;
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: r.message },
       ]);
       setSource(
-        `${r.source} · ${r.personality} · checked ${new Date(r.queried_at).toLocaleTimeString()}`,
+        `Feeling ${r.personality} · checked ${new Date(r.queried_at).toLocaleTimeString()}`,
       );
-      setError(r.warnings.join(" "));
+      setError("");
+      setWarnings(r.warnings);
+      setFacts(r.facts ?? []);
       if (spoken && voiceOpen.current && r.audio_url) {
         setPhase("speaking");
         audio.current = new Audio(r.audio_url);
-        audio.current.onended = () => setPhase("ready");
+        audio.current.onended = () => {
+          if (
+            mounted.current &&
+            voiceOpen.current &&
+            requestGeneration === generation.current
+          )
+            setPhase("ready");
+        };
         audio.current.onerror = () => {
           setPhase("ready");
           setError("Audio playback failed. Your reply is available above.");
@@ -88,14 +143,18 @@ export default function TreeChat({ tree }: { tree: Tree }) {
       } else {
         setPhase("ready");
         if (spoken)
-          setError("Tree voice is unavailable. You can read the reply above.");
+          setError(
+            r.voice_error ||
+              "Tree voice is unavailable. You can read the reply above.",
+          );
       }
     } catch (e) {
-      if (mounted.current) {
+      if (mounted.current && requestGeneration === generation.current) {
         setError((e as Error).message);
         setPhase("ready");
       }
     } finally {
+      lock.current = false;
       if (mounted.current) setBusy(false);
     }
   }
@@ -104,7 +163,8 @@ export default function TreeChat({ tree }: { tree: Tree }) {
       recorder.current.stop();
       return;
     }
-    if (startingMicrophone.current || busy) return;
+    if (startingMicrophone.current || lock.current) return;
+    const requestGeneration = generation.current;
     startingMicrophone.current = true;
     try {
       if (
@@ -116,8 +176,18 @@ export default function TreeChat({ tree }: { tree: Tree }) {
         );
       audio.current?.pause();
       window.speechSynthesis?.cancel();
-      const media = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!mounted.current || !voiceOpen.current) {
+      const media = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      if (
+        !mounted.current ||
+        !voiceOpen.current ||
+        requestGeneration !== generation.current
+      ) {
         media.getTracks().forEach((t) => t.stop());
         return;
       }
@@ -131,8 +201,15 @@ export default function TreeChat({ tree }: { tree: Tree }) {
       r.ondataavailable = (e) => chunks.push(e.data);
       r.onstop = async () => {
         if (timer.current) clearTimeout(timer.current);
+        stopMonitor();
         media.getTracks().forEach((t) => t.stop());
-        if (!mounted.current) return;
+        if (
+          !mounted.current ||
+          !voiceOpen.current ||
+          requestGeneration !== generation.current
+        )
+          return;
+        lock.current = true;
         setBusy(true);
         setPhase("transcribing");
         try {
@@ -149,29 +226,81 @@ export default function TreeChat({ tree }: { tree: Tree }) {
             audio_base64: encoded,
             mime_type: r.mimeType.split(";")[0],
           });
-          if (!mounted.current) return;
+          if (
+            !mounted.current ||
+            !voiceOpen.current ||
+            requestGeneration !== generation.current
+          ) {
+            lock.current = false;
+            if (mounted.current) setBusy(false);
+            return;
+          }
           // Send directly after transcription; the recording button locks out other requests.
           setBusy(false);
+          lock.current = false;
           if (voiceOpen.current) await send(result.text, true);
           else setPhase("ready");
         } catch (e) {
-          if (mounted.current) {
+          if (mounted.current && requestGeneration === generation.current) {
             setError((e as Error).message);
             setPhase("ready");
-            setBusy(false);
           }
+        } finally {
+          lock.current = false;
+          if (mounted.current) setBusy(false);
         }
       };
       setError("");
       setPhase("listening");
+      const ctx = new AudioContext();
+      context.current = ctx;
+      await ctx.resume();
+      const input = ctx.createMediaStreamSource(media),
+        analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      input.connect(analyser);
+      const samples = new Float32Array(analyser.fftSize);
+      turn.current.reset(Date.now());
       r.start();
+      monitor.current = setInterval(() => {
+        if (r.state !== "recording") return;
+        analyser.getFloatTimeDomainData(samples);
+        const rms = Math.sqrt(
+          samples.reduce((sum, v) => sum + v * v, 0) / samples.length,
+        );
+        const action = turn.current.sample(
+          20 * Math.log10(Math.max(rms, 1e-8)),
+          Date.now(),
+        );
+        if (action === "send") r.stop();
+        else if (action === "idle") {
+          r.onstop = null;
+          r.stop();
+          stopMonitor();
+          media.getTracks().forEach((t) => t.stop());
+          setPaused(true);
+          setPhase("ready");
+        }
+      }, 100);
       timer.current = setTimeout(() => {
-        if (r.state === "recording") r.stop();
-      }, 60000);
+        if (r.state !== "recording") return;
+        if (turn.current.sample(-160, Date.now()) === "send") r.stop();
+        else {
+          r.onstop = null;
+          r.stop();
+          stopMonitor();
+          media.getTracks().forEach((t) => t.stop());
+          setPaused(true);
+          setPhase("ready");
+        }
+      }, 45000);
     } catch (e) {
+      stopMonitor();
       stream.current?.getTracks().forEach((t) => t.stop());
-      setError((e as Error).message);
-      setPhase("ready");
+      if (mounted.current && requestGeneration === generation.current) {
+        setError((e as Error).message);
+        setPhase("ready");
+      }
     } finally {
       startingMicrophone.current = false;
     }
@@ -202,6 +331,21 @@ export default function TreeChat({ tree }: { tree: Tree }) {
         )}
       </div>
       {source && <small>{source}</small>}
+      {!!facts.length && (
+        <details className="chat-facts">
+          <summary>Readings and care</summary>
+          {facts.map((f) => (
+            <p className="muted" key={f}>
+              {f}
+            </p>
+          ))}
+        </details>
+      )}
+      {warnings.map((w) => (
+        <p className="muted" key={w}>
+          {w}
+        </p>
+      ))}
       {error && (
         <p className="notice error" role="alert">
           {error}
@@ -230,7 +374,14 @@ export default function TreeChat({ tree }: { tree: Tree }) {
           <Send size={18} />
         </button>
       </form>
-      <button className="secondary full" onClick={() => setVoice(true)}>
+      <button
+        className="secondary full"
+        onClick={() => {
+          setError("");
+          setPaused(false);
+          setVoice(true);
+        }}
+      >
         <Mic size={17} /> Voice conversation
       </button>
       {voice && (
@@ -244,18 +395,7 @@ export default function TreeChat({ tree }: { tree: Tree }) {
             <button
               className="icon voice-close"
               aria-label="Close voice"
-              onClick={() => {
-                setVoice(false);
-                audio.current?.pause();
-                window.speechSynthesis?.cancel();
-                if (recorder.current?.state === "recording") {
-                  recorder.current.onstop = null;
-                  recorder.current.stop();
-                }
-                stream.current?.getTracks().forEach((t) => t.stop());
-                if (timer.current) clearTimeout(timer.current);
-                setPhase("ready");
-              }}
+              onClick={close}
             >
               <X />
             </button>
@@ -272,7 +412,10 @@ export default function TreeChat({ tree }: { tree: Tree }) {
                     ? "Reading the leaves…"
                     : "Let's talk"}
             </h2>
-            <p>Tap the microphone, ask a question, then tap again to send.</p>
+            <p>
+              Speak naturally. Pause when you’re done; I’ll reply and listen
+              again.
+            </p>
             {messages.at(-1) && (
               <p className="voice-transcript">{messages.at(-1)?.content}</p>
             )}
@@ -284,12 +427,25 @@ export default function TreeChat({ tree }: { tree: Tree }) {
             <button
               className="primary"
               disabled={busy}
-              onClick={() => void record()}
+              onClick={() => {
+                if (paused || error) {
+                  setError("");
+                  setPaused(false);
+                  setPhase("ready");
+                } else {
+                  setPaused(true);
+                  if (recorder.current?.state === "recording") {
+                    recorder.current.onstop = null;
+                    recorder.current.stop();
+                    stopMonitor();
+                    stream.current?.getTracks().forEach((t) => t.stop());
+                    setPhase("ready");
+                  }
+                }
+              }}
             >
               <Mic size={20} />
-              {phase === "listening"
-                ? "Finish question"
-                : "Ask with your voice"}
+              {paused || error ? "Resume conversation" : "Pause microphone"}
             </button>
           </section>
         </div>

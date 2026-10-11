@@ -15,17 +15,17 @@ The original full implementation checks below predate this integration; their pr
 
 Verified locally on October 10, 2026, using Node 24, Docker Desktop, local Supabase/PostgreSQL 17, Chromium, and an iPhone 16 Pro simulator running iOS 18.6 / Expo SDK 54.
 
-| Check | Result |
-|---|---|
-| Workspace TypeScript checks | Web, Expo, shared package passed |
-| Edge Function Deno check | Passed |
-| Unit tests | 9 passed |
-| Database/Edge integration tests | 17 passed |
-| pgTAP schema/security/scheduler assertions | 10 passed |
-| Chromium end-to-end tests | 2 passed |
-| Web production build | Passed |
-| iOS and Android bundle exports | Passed |
-| Native iOS simulator smoke test | Sign-in, seeded map, partial watering, completed recovery, 10 points, 8 trees / 1 territory, and Ask My Trees with pending-delivery notices verified |
+| Check                                      | Result                                                                                                                                               |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace TypeScript checks                | Web, Expo, shared package passed                                                                                                                     |
+| Edge Function Deno check                   | Passed                                                                                                                                               |
+| Unit tests                                 | 9 passed                                                                                                                                             |
+| Database/Edge integration tests            | 17 passed                                                                                                                                            |
+| pgTAP schema/security/scheduler assertions | 10 passed                                                                                                                                            |
+| Chromium end-to-end tests                  | 2 passed                                                                                                                                             |
+| Web production build                       | Passed                                                                                                                                               |
+| iOS and Android bundle exports             | Passed                                                                                                                                               |
+| Native iOS simulator smoke test            | Sign-in, seeded map, partial watering, completed recovery, 10 points, 8 trees / 1 territory, and Ask My Trees with pending-delivery notices verified |
 
 The integration suite exercises authenticated endpoints, partial watering, recovery thresholds, replay conflicts, out-of-order readings, competing captures, own-tree care, unowned claims, death penalties, stale-state processing, session expiry, proximity, worker lease recovery, RLS, history delivery/exclusion, connected-mode Tiger outage behavior, unsupported questions, and empty ownership.
 
@@ -84,3 +84,24 @@ Root Gemini/ElevenLabs keys were imported into ignored connected backend setting
 Isolated configuration checks passed for key import, quoted values, example Tiger URL rejection, exclusion of private keys from client settings, and worker-secret stability across repeated preparation. Script syntax and Git whitespace checks passed.
 
 Hosted secret installation still fails with insufficient privileges. These direct provider checks do not prove that hosted app routes have the new credentials. The team must run `npm run connected:setup` using an authorized Supabase account. The root Tiger URL remains an example; hosted inspection found no Timescale extension, Tiger foreign server, or history table, and the current local database had no foreign server. Tiger history and physical-device microphone/camera behavior remain unverified.
+
+## Branch Out presentation and hosted verification — October 11, 2026
+
+This run supersedes the earlier hosted-secret permission limitation: the user obtained Owner access, `npm run connected:setup` completed, and Gemini/ElevenLabs secrets and matching worker Vault configuration were installed. The API was deployed with explicit custom authentication preserved. Function import maps are now configured in `supabase/config.toml`, so CLI deployment resolves the pinned shared dependencies without Docker.
+
+Three additional trees were added to Preeyam's existing hosted account: Birch (16% moisture, 29 °C), Maple (52%, 22 °C), and Willow (92%, 18 °C). They and the existing Arduino tree were relocated near Old Queens in Rutgers–New Brunswick. The Arduino tree/device IDs, device revocation state, and ownership were preserved. The new readings record `source=manual_scenario`, `hardware_observation=false`, and zero points. Queries confirmed zero point events, zero watering evidence, and zero historical delivery rows for these three trees. `npm run presentation:refresh` refreshes only these manually supplied readings; it never runs demo seeds or resets the database.
+
+The displayed brand is Branch Out. Native navigation now uses persistent Home, Chat, Scores, Camera, and Insights tabs. Both clients use the same speech/silence detector and automatic listen → transcribe → reply → listen loop, with pause/resume and cleanup on close/background. Stable per-tree ElevenLabs assignments give Birch, Maple, and Willow distinct voices. Casual Gemini replies reflect trusted moisture/thermal signals and traits; inactive/dead states take precedence. Original database facts remain available separately, and generated chat cannot mutate scoring or care eligibility.
+
+Recorded live checks used isolated, email-confirmed temporary accounts created through the administrator API (no email sent). Accounts, uploaded photos, and browser sessions were removed afterward:
+
+- Hosted chat for all three trees returned `source=gemini`, caretaker facts for Preeyam, no provider warnings, and actual ElevenLabs audio. Returned personalities were watchful, warm, and waterlogged respectively.
+- One later text request used the guarded template fallback; the final follow-up checks returned Gemini replies for all three trees. Provider failure or rejected wording remains a supported path with database facts and deterministic casual text.
+- The hosted transcription endpoint successfully transcribed generated MP3 speech.
+- A real Japanese maple photo uploaded through authenticated Storage returned Gemini identification `Acer palmatum`, four nearby Rutgers records, and caretaker data. This verifies the backend photo/CV/candidate pipeline; species recognition does not prove a unique physical tree's identity or health.
+- Chromium sign-in, hosted tree selection, chat, and voice UI passed. A prerecorded speech-and-silence input exercised actual MediaRecorder capture, metering, automatic submission, playback, microphone restart, and a second automatic turn with conversation history. Web chat and voice screenshots were visually inspected.
+- Workspace typechecking, Deno checking, the web production build, and native iOS/Android bundle exports passed. Unit tests: 25 passed; the 20 opt-in stateful tests were skipped. The local database-reset integration suites were not rerun against the existing configured stack. The web build retains its existing large-chunk warning.
+
+Hosted security advisors found no RLS-disabled tables. Six internal service-only tables intentionally have RLS with no client policies. The existing Auth setting has [leaked password protection disabled](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection); this run did not change Auth settings.
+
+Remaining limits: physical-phone camera, GPS, microphone metering/audio playback, and device sensor calibration still require a device smoke test. The root Tiger URL is an example placeholder and hosted Tiger history remains unavailable; current Supabase values still work. Readings intentionally become stale after 30 minutes unless refreshed. The manually supplied trees cannot demonstrate hardware-verified watering or point awards. Existing transactional scoring was preserved, not bypassed.

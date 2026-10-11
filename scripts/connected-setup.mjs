@@ -29,10 +29,17 @@ const providerNames = [
   "ELEVENLABS_VOICE_ID_WATCHFUL",
   "ELEVENLABS_VOICE_ID_QUIET",
   "ELEVENLABS_VOICE_ID_SOLEMN",
+  "ELEVENLABS_VOICE_ID_WATERLOGGED",
+  "ELEVENLABS_VOICE_IDS",
   "ELEVENLABS_MODEL",
   "ELEVENLABS_STT_MODEL",
   "TIGER_DATABASE_URL",
   "TIGER_TRANSPORT",
+  ...new Set(
+    [...Object.keys(root), ...Object.keys(backend)].filter((name) =>
+      /^ELEVENLABS_TREE_VOICE_[0-9a-f_]+$/.test(name),
+    ),
+  ),
 ];
 for (const name of providerNames) {
   const value = root[name]?.trim();
@@ -180,7 +187,7 @@ try {
   );
   execFileSync(
     "npx",
-    ["supabase", "db", "query", "--project-ref", project, "--file", sql],
+    ["supabase", "db", "query", "--linked", "--project-ref", project, "--file", sql],
     { stdio: ["ignore", "pipe", "pipe"] },
   );
   console.log(

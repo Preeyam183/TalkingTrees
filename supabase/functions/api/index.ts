@@ -10,6 +10,7 @@ import {
   validateTreeMessage,
   treeMessagePrompt,
   treeMessageJsonSchema,
+  conversationPersonality,
 } from "../../../packages/shared/src/index.ts";
 import {
   db,
@@ -18,12 +19,10 @@ import {
   gemini,
   isDemo,
   runDelivery,
-  elevenLabsVoiceId,
-  personalityForTree,
 } from "../_shared/services.ts";
 import { personalityParams } from "../_shared/personality.ts";
 import { insights } from "../_shared/insights.ts";
-import { chat, transcribe } from "../_shared/conversation.ts";
+import { chat, transcribe, synthesize } from "../_shared/conversation.ts";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -90,19 +89,10 @@ async function dialogue(tree_id: string) {
     .single();
   if (error) throw error;
   const parameters = await personalityParams(t);
-  const personality = personalityForTree({
-    status:
-      parameters.lifecycle === "dead"
-        ? "dead"
-        : parameters.mood === "uncertain"
-          ? "unknown"
-          : parameters.mood === "concerned"
-            ? "thirsty"
-            : "healthy",
-  });
+  const personality = conversationPersonality(parameters);
   const fingerprint = await digest(
     JSON.stringify({
-      version: 2,
+      version: 3,
       parameters,
       model: Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash",
       demo: await isDemo(),
@@ -453,7 +443,7 @@ Deno.serve(async (req) => {
         const identificationSchema = {
           type: "object",
           properties: {
-            species_name: { type: "string", nullable: true },
+            species_name: { type: ["string", "null"] },
             description: { type: "string", maxLength: 1000 },
             uncertain: { type: "boolean" },
           },
@@ -492,64 +482,15 @@ Deno.serve(async (req) => {
         .parse(p);
       const d = await dialogue(tree_id);
       if (route === "tree-dialogue") return json(d);
-      if (await isDemo())
-        return json({
-          message: d.message,
-          url: null,
-          source: "simulated",
-          reason: "Use labeled device speech in demo mode.",
-        });
-      const key = Deno.env.get("ELEVENLABS_API_KEY"),
-        voice = elevenLabsVoiceId(d.personality);
-      if (!key || !voice)
-        return json({ message: d.message, url: null, source: "unavailable" });
-      const audioFingerprint = await digest(
-        `${d.fingerprint}:${voice}:${Deno.env.get("ELEVENLABS_MODEL") || "eleven_multilingual_v2"}`,
-      );
-      if (d.audio_path && d.audio_fingerprint === audioFingerprint)
-        return json({
-          message: d.message,
-          url: db.storage.from("tree-audio").getPublicUrl(d.audio_path).data
-            .publicUrl,
-          source: "elevenlabs",
-        });
-      try {
-        const response = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${voice}`,
-          {
-            method: "POST",
-            headers: { "xi-api-key": key, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              text: d.message,
-              model_id:
-                Deno.env.get("ELEVENLABS_MODEL") || "eleven_multilingual_v2",
-            }),
-            signal: AbortSignal.timeout(20000),
-          },
-        );
-        if (!response.ok) throw new Error("Voice unavailable");
-        const path = `${tree_id}/${audioFingerprint}.mp3`;
-        const { error } = await db.storage
-          .from("tree-audio")
-          .upload(path, await response.arrayBuffer(), {
-            contentType: "audio/mpeg",
-            upsert: true,
-          });
-        if (error) throw error;
-        await db
-          .from("tree_dialogue")
-          .update({ audio_path: path, audio_fingerprint: audioFingerprint })
-          .eq("tree_id", tree_id)
-          .eq("fingerprint", d.fingerprint);
-        return json({
-          message: d.message,
-          url: db.storage.from("tree-audio").getPublicUrl(path).data.publicUrl,
-          source: "elevenlabs",
-        });
-      } catch {
-        return json({ message: d.message, url: null, source: "unavailable" });
-      }
+      const audio = await synthesize(d.message, d.personality, tree_id);
+      return json({
+        message: d.message,
+        url: audio.url,
+        source: audio.source,
+        reason: audio.error,
+      });
     }
+
     return json({ error: "not_found" }, 404);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Request failed";

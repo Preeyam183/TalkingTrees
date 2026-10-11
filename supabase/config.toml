@@ -32,39 +32,52 @@ enabled = true
 policy = "per_worker"
 [functions.api]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.sensor-readings]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.watering-evidence]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.tree-health-events]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.device-sessions]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.watering-sessions]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.tree-insights]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.register-tree]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.identify-tree]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.tree-dialogue]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.tree-voice]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.delivery-worker]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [functions.simulator]
 verify_jwt = false
+import_map = "./functions/deno.json"

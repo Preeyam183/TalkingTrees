@@ -76,6 +76,8 @@ export type ChatResponse = {
   warnings: string[];
   audio_url: string | null;
   voice_source: string;
+  voice_error?: string;
+  facts?: string[];
 };
 export type ScanCandidate = Tree & {
   distance_m: number;
@@ -269,3 +271,5 @@ export function createApi(
     },
   };
 }
+export * from "./voice.ts";
+export * from "./conversation.ts";
