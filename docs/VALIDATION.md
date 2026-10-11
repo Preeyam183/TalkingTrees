@@ -42,3 +42,25 @@ The desktop browser test observes capture updates in a second tab. The mobile vi
 The demo uses simulated historical data, simulated hardware events, a labeled identification fixture, and device speech. It does not claim live provider validation. Connected-mode Tiger failure was tested to return an unavailable state without simulated substitution.
 
 Known build/tooling notes: the web build reports a large main bundle warning; npm audit reports inherited Expo/React Native toolchain advisories after compatible dependency updates. These are documented limitations, not passing security-certification claims.
+
+## Sensor personality pipeline — October 10, 2026
+
+- Applied migration 009 locally without resetting demo/Tiger data.
+- Eight focused unit tests passed: normal/reversed calibration, clamping, null/missing/equal
+  calibration, sample uncertainty, stable traits, nonfinite input rejection, eligibility
+  isolation, and response validation.
+- Additional local PostgreSQL check passed inside a rolled-back transaction: identical raw
+  retries preserve receipts, conflicting retries fail, current tree game state stays intact,
+  and ordinary roles cannot invoke raw-ingestion RPCs.
+- Workspace typechecks, Deno check and web production build passed (existing bundle-size warning).
+- Authenticated live `tree-dialogue` HTTP 200 and cached repeat returned shared parameters
+  with unknown measurements and a deterministic uncertainty message.
+- No live Gemini generation or physical sensor calibration was claimed. Full reset-based
+  integration suites and native device UI checks were not repeated for this change.
+
+Focused verification (the DB test targets only local port 54322 and rolls back its changes):
+
+```sh
+npm test
+PERSONALITY_DB=1 npx vitest run tests/personality.test.ts tests/personality.database.test.ts
+```

@@ -46,7 +46,7 @@ The `device_id` value is the provisioned `devices.hardware_id`, not a database U
 }
 ```
 
-`pressure_pa` is optional because older payloads may omit it; use it for the BMP280 barometric pressure when available. `soil_temperature_c` and `light_raw` may remain `null` because those sensors are not installed. The server authenticates the hardware key, stores this payload in `hardware_readings`, and treats `(device, seq)` as idempotent. It does not guess moisture calibration, timestamps, tree associations, or Gemini parameters. A later normalization step can convert the stored payload into the canonical sensor-reading contract below and then call `ingest_reading`.
+`pressure_pa` is optional because older payloads may omit it; use it for the BMP280 barometric pressure when available. `soil_temperature_c` and `light_raw` may remain `null` because those sensors are not installed. The server authenticates the hardware key, stores this payload in `hardware_readings`, and treats `(device, seq)` as idempotent. The personality pipeline below calibrates these readings only when administrator-provided reference values exist. It uses the authenticated device association and labels timestamps as server receipts. Raw packets do not enter the canonical game-reading flow; continue sending the canonical contract below for game state and capture evidence.
 
 `POST /sensor-readings`
 
@@ -160,3 +160,73 @@ All responses are JSON. Error bodies contain `error`. Never place device secrets
 ## Hardware calibration
 
 `game_config` stores meters, seconds, point amounts, territory ratio, and moisture percentage-point increase. `species.thirst_pct` and `species.recovery_pct` store percent moisture. Defaults are illustrative: 50 m, 300 s sessions, 120 s baseline/evidence freshness, 1800 s stale cutoff, 30 s future-clock tolerance, and 5 percentage points increase. Species thresholds vary in the seed; calibrate them against sensor substrate, installation, and species needs before connected use.
+
+## Sensor-to-personality pipeline
+
+Migration `202610100009_sensor_personality.sql` adds administrator-managed calibration on
+`devices`, stable traits/care ranges on `species`, and retry-safe raw ingestion. Apply
+locally with `npx supabase migration up --local`; this does not reset the demo.
+
+Configure calibration using **measured** dry/wet reference readings. Example only:
+
+```sql
+update devices set moisture_calibration =
+  '{"field":"adc_raw","dryRaw":600,"wetRaw":250}'::jsonb
+where hardware_id='arduino-01';
+
+update species set personality_traits = array['lively','curious'],
+  dialogue_care_profile = '{
+    "temperatureField":"air_temperature_c",
+    "comfortableTemperatureC":[10,30],
+    "suitableLightRaw":[200,800]
+  }'::jsonb
+where name='Red maple';
+```
+
+These numbers are illustrative, **not hardware or horticultural recommendations**.
+`field` accepts `adc_raw` or `moisture_raw`. The mapping uses
+`clamp(100 * (raw - dryRaw) / (wetRaw - dryRaw), 0, 100)`; reversed direction is valid.
+Missing/equal/nonfinite calibration endpoints or absent selected readings produce unknown
+moisture. Optional sensor fields may be omitted or null; they never become zero. Raw
+numbers must be finite; temperature validation is −60 to 85 °C. Non-numeric fields are
+rejected, not coerced. A zero reading is preserved as a real zero.
+
+Care ranges are optional; missing/invalid ranges yield unknown classifications.
+`temperatureField` explicitly selects air or soil temperature. Light bounds use the
+installed sensor's raw units and assume increasing values mean more light; omit them
+until this is verified. Species traits stay stable as mood changes. The backend's
+existing canonical moisture status supplies hysteresis; raw calibration alone does not
+label a tree thirsty or change game state. Raw trend remains unknown because packets
+have no event timestamp/normalization correlation. Canonical trend compares two fresh
+readings' shortfall from the species recovery threshold; fewer than two readings stays
+unknown. This describes recovery progress, not a diagnosis.
+
+Both web and mobile call `tree-dialogue`, which now returns the existing `message`,
+`source`, `personality` (legacy voice selector), plus `mood`, `tone`, and `parameters`:
+calibrated measurements, stable `personality_traits`, mood/intensity, care signals,
+unknown readings, lifecycle, active request, `watering_allowed`, reading timestamp and
+source. `watering_allowed` is only the backend's request/baseline prerequisite check;
+starting a session still verifies the player's proximity and all transactional rules.
+Gemini never supplies this flag or changes ownership/points.
+
+Dialogue uses the latest raw receipt when newer than the canonical reading; otherwise
+it uses canonical percentages with explicit identity calibration. Legacy canonical
+`temperature_c` is exposed as air temperature; hardware needing separate soil readings
+must use the explicitly named raw fields. Stale input is unknown. Raw timestamps are
+**server receipt times**, not proof of when a measurement occurred. Revoked devices'
+raw readings are excluded. Cached dialogue fingerprints include the mapped state,
+traits, model, mode, and reading timestamp. New raw receipts notify existing tree
+realtime subscribers without changing moisture, health, ownership, or points.
+
+The sample uncalibrated packet yields null moisture/temperatures/light, unknown care
+signals, and an uncertain mood. Its fallback reads: “I'm unsure how I'm doing: moisture,
+temperature and light readings are unknown. Please check my sensors and calibration.”
+
+Raw `POST /sensor-readings` returns `status: "raw_accepted"`,
+`hardware_reading_id`, internal `device_id`, `tree_id`, `seq`, and `received_at`.
+Identical `(device, seq)` retries preserve the original receipt and payload; conflicting
+reuse returns HTTP 409. Persist a monotonically unique sequence across controller
+restarts. Raw packets remain separate from canonical ingestion/Tiger history: they do
+not create watering requests, fulfill evidence, award points, or deliver uncalibrated
+history. Continue sending the documented canonical timestamps/percentages and evidence
+for game capture. No firmware or calibration endpoints are guessed automatically.

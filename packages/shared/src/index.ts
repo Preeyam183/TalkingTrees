@@ -1,3 +1,5 @@
+export * from "./personality.ts";
+import { sensorPacketSchema } from "./personality.ts";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 export { z };
@@ -14,16 +16,11 @@ export const readingSchema = eventBase
     temperature_c: z.number().min(-60).max(85),
   })
   .strict();
-export const hardwareReadingSchema = z
-  .object({
+export const hardwareReadingSchema = sensorPacketSchema
+  .extend({
     device_id: z.string().min(1).max(128),
-    seq: z.number().int().nonnegative(),
-    adc_raw: z.number().int(),
-    moisture_raw: z.number(),
-    air_temperature_c: z.number().nullable(),
-    soil_temperature_c: z.number().nullable(),
-    light_raw: z.number().nullable(),
-    pressure_pa: z.number().nullable().optional(),
+    seq: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    pressure_pa: z.number().finite().nullable().optional(),
   })
   .strict();
 export const evidenceSchema = eventBase

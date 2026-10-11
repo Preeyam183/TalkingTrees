@@ -103,3 +103,25 @@ Responses include `queried_at`, `period`, optional `comparison_period`, `source`
 - `APP_MODE=connected`: required for live integrations. Demo additionally requires database `demo_mode=true` and a development client build to expose simulator controls.
 
 Supabase service-role credentials are injected into hosted Edge Functions and must never be copied into Vite or Expo settings. Client keys are publishable keys only. Client locations verify proximity but are not anti-spoofing proof; this MVP relies on authenticated hardware evidence for completion.
+
+## Personality generation
+
+Shared deterministic mapping/validation lives in `packages/shared/src/personality.ts`;
+`supabase/functions/_shared/personality.ts` obtains trusted backend state and device/species
+configuration. Both apps consume the same backend dialogue; no client decides care rules.
+See [hardware calibration](HARDWARE.md#sensor-to-personality-pipeline) for provisioning.
+
+The default selected model remains `gemini-2.5-flash`. Its documented structured-output
+support is used with a JSON schema for mood, tone and a 1–240 character first-person
+message. The existing fixed sampling temperature `0.1` is independent of measurements;
+no sensor value controls generation settings. See Google's
+[model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash) and
+[GenerationConfig reference](https://ai.google.dev/api/generate-content#v1beta.GenerationConfig).
+Review model support before overriding `GEMINI_MODEL`.
+
+The server rejects malformed/extra fields, wrong moods, empty/oversized messages,
+missing first-person wording and missing uncertainty wording when measurements are
+unknown. It uses deterministic templates on rejection, missing credentials, provider
+errors, or demo mode. These checks validate structure and key constraints, not every
+possible natural-language claim; generated text never feeds game-state mutations.
+`APP_MODE=demo` keeps Gemini simulated/template-based even with real Tiger history.

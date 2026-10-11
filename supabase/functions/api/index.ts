@@ -6,6 +6,10 @@ import {
   healthSchema,
   sessionSchema,
   locationSchema,
+  fallbackTreeMessage,
+  validateTreeMessage,
+  treeMessagePrompt,
+  treeMessageJsonSchema,
 } from "../../../packages/shared/src/index.ts";
 import {
   db,
@@ -17,6 +21,7 @@ import {
   elevenLabsVoiceId,
   personalityForTree,
 } from "../_shared/services.ts";
+import { personalityParams } from "../_shared/personality.ts";
 import { insights } from "../_shared/insights.ts";
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -83,63 +88,65 @@ async function dialogue(tree_id: string) {
     .eq("id", tree_id)
     .single();
   if (error) throw error;
-  const cfg = await config();
-  const fresh =
-    t.reading_at &&
-    Date.now() - Date.parse(t.reading_at) < cfg.stale_seconds * 1000;
-  const state = {
-    species: t.species_name,
-    status: fresh
-      ? t.status
-      : ["dead", "inactive"].includes(t.status)
-        ? t.status
-        : "unknown",
-    moisture: fresh ? t.moisture : null,
-    temperature: fresh ? t.temperature : null,
-    watering_eligible: fresh && !!t.request_id,
-    recovery_pct: t.recovery_pct,
-  };
-  const personality = personalityForTree(state);
-  const fingerprint = await digest(JSON.stringify(state));
+  const parameters = await personalityParams(t);
+  const personality = personalityForTree({
+    status:
+      parameters.lifecycle === "dead"
+        ? "dead"
+        : parameters.mood === "uncertain"
+          ? "unknown"
+          : parameters.mood === "concerned"
+            ? "thirsty"
+            : "healthy",
+  });
+  const fingerprint = await digest(
+    JSON.stringify({
+      version: 2,
+      parameters,
+      model: Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash",
+      demo: await isDemo(),
+    }),
+  );
   const { data: cached } = await db
     .from("tree_dialogue")
     .select("*")
     .eq("tree_id", tree_id)
     .eq("fingerprint", fingerprint)
     .maybeSingle();
-  if (cached) return cached;
-  let message =
-    state.status === "dead"
-      ? "My death has been confirmed. Thank you for caring for the grove."
-      : state.status === "unknown"
-        ? "I don't have fresh readings yet. Let's check my sensor before watering."
-        : state.watering_eligible
-          ? "I'm thirsty! Start a care session nearby, then water until my sensor confirms recovery."
-          : "I'm comfortable for now. Save your water for a thirsty neighbor!";
+  if (cached) return { ...cached, parameters, mood: parameters.mood };
+  let message = fallbackTreeMessage(parameters);
   let source = "template";
+  let tone = "gentle";
   if (!(await isDemo()))
     try {
-      const g = await gemini(
-        `Write one short first-person tree message, JSON {message:string}, at most 200 characters. Describe only this supplied state. Never invent diagnoses, numbers or change eligibility/rules. ${JSON.stringify(state)}`,
+      const g = validateTreeMessage(
+        await gemini(
+          treeMessagePrompt(parameters),
+          undefined,
+          treeMessageJsonSchema,
+        ),
+        parameters,
       );
-      if (typeof g.message === "string" && g.message.length <= 200) {
+      if (g) {
         message = g.message;
+        tone = g.tone;
         source = "gemini";
       }
     } catch {
-      /* templates */
+      /* deterministic fallback */
     }
   const value = {
     tree_id,
     fingerprint,
     personality,
+    tone,
     message,
     source,
     updated_at: new Date().toISOString(),
     audio_path: null,
   };
   await db.from("tree_dialogue").upsert(value);
-  return value;
+  return { ...value, parameters, mood: parameters.mood, tone };
 }
 async function simulate(p: any, player: string) {
   if (!(await isDemo())) throw new Error("simulator_disabled");
@@ -254,19 +261,11 @@ Deno.serve(async (req) => {
         const raw = hardwareReadingSchema.safeParse(p);
         if (raw.success) {
           const device = await authenticateHardware(req, raw.data.device_id);
-          const { data, error } = await db
-            .from("hardware_readings")
-            .upsert(
-              {
-                device_id: device.id,
-                sequence_number: raw.data.seq,
-                payload: raw.data,
-              },
-              { onConflict: "device_id,sequence_number" },
-            )
-            .select("id,device_id,sequence_number,received_at")
-            .single();
-          if (error) throw error;
+          const data = await rpc("accept_hardware_reading", {
+            p_device: device.id,
+            p_seq: raw.data.seq,
+            p_payload: raw.data,
+          });
           return json({
             status: "raw_accepted",
             hardware_reading_id: data.id,
