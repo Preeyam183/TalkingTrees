@@ -380,9 +380,20 @@ Deno.serve(async (req) => {
         let binary = "";
         for (let i = 0; i < bytes.length; i += 8192)
           binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+        const identificationSchema = {
+          type: "object",
+          properties: {
+            species_name: { type: "string", nullable: true },
+            description: { type: "string", maxLength: 1000 },
+            uncertain: { type: "boolean" },
+          },
+          required: ["species_name", "description", "uncertain"],
+          additionalProperties: false,
+        };
         const g = await gemini(
-          "Suggest tree species from this photo. JSON {species_name:string|null,description:string,uncertain:boolean}. If uncertain set uncertain=true. Never supply a confidence percentage or watering instructions.",
+          "Identify the tree or plant species in this photo. Return only the requested JSON. Use species_name=null and uncertain=true when the image is ambiguous. Never provide a confidence percentage, care advice, or invented environmental facts.",
           { data: btoa(binary), mimeType: blob.type },
+          identificationSchema,
         );
         return json({
           ...z

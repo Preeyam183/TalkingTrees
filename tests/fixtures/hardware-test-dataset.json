@@ -1,0 +1,78 @@
+{
+  "metadata": {
+    "dataset_name": "new-brunswick-hardware-fake-data",
+    "schema_version": "raw-hardware-v1",
+    "purpose": "Manual testing only; not loaded by the app or database.",
+    "location": "New Brunswick, New Jersey, USA",
+    "not_for_production": true,
+    "password_note": "All passwords and device keys are fake test values."
+  },
+  "accounts": [
+    { "id": "70000000-0000-4000-8000-000000000001", "email": "nb.user01@example.test", "password": "FakeNBTest-01!", "display_name": "Avery Pine", "color": "#33886c", "tree_count": 0 },
+    { "id": "70000000-0000-4000-8000-000000000002", "email": "nb.user02@example.test", "password": "FakeNBTest-02!", "display_name": "Blair Oak", "color": "#b67ae0", "tree_count": 1 },
+    { "id": "70000000-0000-4000-8000-000000000003", "email": "nb.user03@example.test", "password": "FakeNBTest-03!", "display_name": "Casey Maple", "color": "#df9b3d", "tree_count": 1 },
+    { "id": "70000000-0000-4000-8000-000000000004", "email": "nb.user04@example.test", "password": "FakeNBTest-04!", "display_name": "Devon Birch", "color": "#3576ed", "tree_count": 1 },
+    { "id": "70000000-0000-4000-8000-000000000005", "email": "nb.user05@example.test", "password": "FakeNBTest-05!", "display_name": "Emery Cedar", "color": "#a34d42", "tree_count": 1 },
+    { "id": "70000000-0000-4000-8000-000000000006", "email": "nb.user06@example.test", "password": "FakeNBTest-06!", "display_name": "Finley Elm", "color": "#7a6b35", "tree_count": 1 },
+    { "id": "70000000-0000-4000-8000-000000000007", "email": "nb.user07@example.test", "password": "FakeNBTest-07!", "display_name": "Gray Willow", "color": "#5c7f8f", "tree_count": 1 },
+    { "id": "70000000-0000-4000-8000-000000000008", "email": "nb.user08@example.test", "password": "FakeNBTest-08!", "display_name": "Harper Ash", "color": "#8b5e83", "tree_count": 1 },
+    { "id": "70000000-0000-4000-8000-000000000009", "email": "nb.user09@example.test", "password": "FakeNBTest-09!", "display_name": "Indigo Spruce", "color": "#4d8b63", "tree_count": 2 },
+    { "id": "70000000-0000-4000-8000-000000000010", "email": "nb.user10@example.test", "password": "FakeNBTest-10!", "display_name": "Jordan Fir", "color": "#b06c36", "tree_count": 2 }
+  ],
+  "areas": [
+    { "id": "71000000-0000-4000-8000-000000000001", "name": "Downtown New Brunswick", "city": "New Brunswick", "region": "NJ", "latitude": 40.4862, "longitude": -74.4518 },
+    { "id": "71000000-0000-4000-8000-000000000002", "name": "Rutgers Neighborhood", "city": "New Brunswick", "region": "NJ", "latitude": 40.5008, "longitude": -74.4474 },
+    { "id": "71000000-0000-4000-8000-000000000003", "name": "Highland Park Edge", "city": "New Brunswick", "region": "NJ", "latitude": 40.4957, "longitude": -74.4346 }
+  ],
+  "trees": [
+    { "id": "72000000-0000-4000-8000-000000000001", "name": "Blair's Oak", "species": "White oak", "area_id": "71000000-0000-4000-8000-000000000001", "owner_id": "70000000-0000-4000-8000-000000000002", "latitude": 40.4864, "longitude": -74.4516, "personality_hint": "warm" },
+    { "id": "72000000-0000-4000-8000-000000000002", "name": "Casey's Maple", "species": "Red maple", "area_id": "71000000-0000-4000-8000-000000000001", "owner_id": "70000000-0000-4000-8000-000000000003", "latitude": 40.4868, "longitude": -74.4521, "personality_hint": "watchful" },
+    { "id": "72000000-0000-4000-8000-000000000003", "name": "Devon's Birch", "species": "River birch", "area_id": "71000000-0000-4000-8000-000000000002", "owner_id": "70000000-0000-4000-8000-000000000004", "latitude": 40.5005, "longitude": -74.4471, "personality_hint": "quiet" },
+    { "id": "72000000-0000-4000-8000-000000000004", "name": "Emery's Cedar", "species": "Eastern red cedar", "area_id": "71000000-0000-4000-8000-000000000002", "owner_id": "70000000-0000-4000-8000-000000000005", "latitude": 40.5012, "longitude": -74.4478, "personality_hint": "warm" },
+    { "id": "72000000-0000-4000-8000-000000000005", "name": "Finley's Elm", "species": "American elm", "area_id": "71000000-0000-4000-8000-000000000002", "owner_id": "70000000-0000-4000-8000-000000000006", "latitude": 40.5009, "longitude": -74.4468, "personality_hint": "watchful" },
+    { "id": "72000000-0000-4000-8000-000000000006", "name": "Gray's Willow", "species": "Weeping willow", "area_id": "71000000-0000-4000-8000-000000000003", "owner_id": "70000000-0000-4000-8000-000000000007", "latitude": 40.4959, "longitude": -74.4348, "personality_hint": "quiet" },
+    { "id": "72000000-0000-4000-8000-000000000007", "name": "Harper's Ash", "species": "Green ash", "area_id": "71000000-0000-4000-8000-000000000003", "owner_id": "70000000-0000-4000-8000-000000000008", "latitude": 40.4953, "longitude": -74.4343, "personality_hint": "solemn" },
+    { "id": "72000000-0000-4000-8000-000000000008", "name": "Indigo's Spruce", "species": "Norway spruce", "area_id": "71000000-0000-4000-8000-000000000001", "owner_id": "70000000-0000-4000-8000-000000000009", "latitude": 40.4871, "longitude": -74.4512, "personality_hint": "warm" },
+    { "id": "72000000-0000-4000-8000-000000000009", "name": "Indigo's Pine", "species": "White pine", "area_id": "71000000-0000-4000-8000-000000000002", "owner_id": "70000000-0000-4000-8000-000000000009", "latitude": 40.5015, "longitude": -74.4469, "personality_hint": "watchful" },
+    { "id": "72000000-0000-4000-8000-000000000010", "name": "Jordan's Fir", "species": "Douglas fir", "area_id": "71000000-0000-4000-8000-000000000003", "owner_id": "70000000-0000-4000-8000-000000000010", "latitude": 40.4962, "longitude": -74.4341, "personality_hint": "warm" },
+    { "id": "72000000-0000-4000-8000-000000000011", "name": "Jordan's Dogwood", "species": "Flowering dogwood", "area_id": "71000000-0000-4000-8000-000000000003", "owner_id": "70000000-0000-4000-8000-000000000010", "latitude": 40.4955, "longitude": -74.4350, "personality_hint": "solemn" }
+  ],
+  "devices": [
+    { "id": "73000000-0000-4000-8000-000000000001", "hardware_id": "arduino-nb-01", "tree_id": "72000000-0000-4000-8000-000000000001", "device_key": "fake-nb-device-key-01" },
+    { "id": "73000000-0000-4000-8000-000000000002", "hardware_id": "arduino-nb-02", "tree_id": "72000000-0000-4000-8000-000000000002", "device_key": "fake-nb-device-key-02" },
+    { "id": "73000000-0000-4000-8000-000000000003", "hardware_id": "arduino-nb-03", "tree_id": "72000000-0000-4000-8000-000000000003", "device_key": "fake-nb-device-key-03" },
+    { "id": "73000000-0000-4000-8000-000000000004", "hardware_id": "arduino-nb-04", "tree_id": "72000000-0000-4000-8000-000000000004", "device_key": "fake-nb-device-key-04" },
+    { "id": "73000000-0000-4000-8000-000000000005", "hardware_id": "arduino-nb-05", "tree_id": "72000000-0000-4000-8000-000000000005", "device_key": "fake-nb-device-key-05" },
+    { "id": "73000000-0000-4000-8000-000000000006", "hardware_id": "arduino-nb-06", "tree_id": "72000000-0000-4000-8000-000000000006", "device_key": "fake-nb-device-key-06" },
+    { "id": "73000000-0000-4000-8000-000000000007", "hardware_id": "arduino-nb-07", "tree_id": "72000000-0000-4000-8000-000000000007", "device_key": "fake-nb-device-key-07" },
+    { "id": "73000000-0000-4000-8000-000000000008", "hardware_id": "arduino-nb-08", "tree_id": "72000000-0000-4000-8000-000000000008", "device_key": "fake-nb-device-key-08" },
+    { "id": "73000000-0000-4000-8000-000000000009", "hardware_id": "arduino-nb-09", "tree_id": "72000000-0000-4000-8000-000000000009", "device_key": "fake-nb-device-key-09" },
+    { "id": "73000000-0000-4000-8000-000000000010", "hardware_id": "arduino-nb-10", "tree_id": "72000000-0000-4000-8000-000000000010", "device_key": "fake-nb-device-key-10" },
+    { "id": "73000000-0000-4000-8000-000000000011", "hardware_id": "arduino-nb-11", "tree_id": "72000000-0000-4000-8000-000000000011", "device_key": "fake-nb-device-key-11" }
+  ],
+  "raw_hardware_readings": [
+    { "device_id": "arduino-nb-01", "seq": 1, "adc_raw": 280, "moisture_raw": 17937, "air_temperature_c": 22.4, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 101325 },
+    { "device_id": "arduino-nb-02", "seq": 1, "adc_raw": 410, "moisture_raw": 11200, "air_temperature_c": 21.8, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 100980 },
+    { "device_id": "arduino-nb-03", "seq": 1, "adc_raw": 315, "moisture_raw": 15100, "air_temperature_c": 19.6, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 101410 },
+    { "device_id": "arduino-nb-04", "seq": 1, "adc_raw": 295, "moisture_raw": 16500, "air_temperature_c": 24.0, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 101110 },
+    { "device_id": "arduino-nb-05", "seq": 1, "adc_raw": 448, "moisture_raw": 8450, "air_temperature_c": 22.3, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 100940 },
+    { "device_id": "arduino-nb-06", "seq": 1, "adc_raw": 330, "moisture_raw": 13980, "air_temperature_c": 20.2, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 101376 },
+    { "device_id": "arduino-nb-07", "seq": 1, "adc_raw": 390, "moisture_raw": 12100, "air_temperature_c": 23.1, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 101205 },
+    { "device_id": "arduino-nb-08", "seq": 1, "adc_raw": 265, "moisture_raw": 19110, "air_temperature_c": 23.0, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 101287 },
+    { "device_id": "arduino-nb-09", "seq": 1, "adc_raw": 432, "moisture_raw": 9820, "air_temperature_c": 22.1, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 100955 },
+    { "device_id": "arduino-nb-10", "seq": 1, "adc_raw": 300, "moisture_raw": 16000, "air_temperature_c": 24.2, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 101150 },
+    { "device_id": "arduino-nb-11", "seq": 1, "adc_raw": 289, "moisture_raw": 16820, "air_temperature_c": 24.4, "soil_temperature_c": null, "light_raw": null, "pressure_pa": 101130 }
+  ],
+  "expected_relationships": [
+    { "account_id": "70000000-0000-4000-8000-000000000001", "tree_ids": [] },
+    { "account_id": "70000000-0000-4000-8000-000000000002", "tree_ids": ["72000000-0000-4000-8000-000000000001"] },
+    { "account_id": "70000000-0000-4000-8000-000000000003", "tree_ids": ["72000000-0000-4000-8000-000000000002"] },
+    { "account_id": "70000000-0000-4000-8000-000000000004", "tree_ids": ["72000000-0000-4000-8000-000000000003"] },
+    { "account_id": "70000000-0000-4000-8000-000000000005", "tree_ids": ["72000000-0000-4000-8000-000000000004"] },
+    { "account_id": "70000000-0000-4000-8000-000000000006", "tree_ids": ["72000000-0000-4000-8000-000000000005"] },
+    { "account_id": "70000000-0000-4000-8000-000000000007", "tree_ids": ["72000000-0000-4000-8000-000000000006"] },
+    { "account_id": "70000000-0000-4000-8000-000000000008", "tree_ids": ["72000000-0000-4000-8000-000000000007"] },
+    { "account_id": "70000000-0000-4000-8000-000000000009", "tree_ids": ["72000000-0000-4000-8000-000000000008", "72000000-0000-4000-8000-000000000009"] },
+    { "account_id": "70000000-0000-4000-8000-000000000010", "tree_ids": ["72000000-0000-4000-8000-000000000010", "72000000-0000-4000-8000-000000000011"] }
+  ]
+}
