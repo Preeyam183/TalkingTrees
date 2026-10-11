@@ -11,6 +11,7 @@ import {
   StyleSheet,
   AccessibilityInfo,
   AppState,
+  Platform,
 } from "react-native";
 import {
   useAudioPlayer,
@@ -21,16 +22,17 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
 } from "expo-audio";
-import { File, Paths } from "expo-file-system";
+import { File } from "expo-file-system";
 import * as Speech from "expo-speech";
 import {
   type Tree,
   type ChatMessage,
   type ChatResponse,
-  decodeBase64,
   VoiceTurnDetector,
 } from "@treequest/shared";
 import { api } from "./client";
+import { cacheVoice, playTreeAudio, speakerMode } from "./audio";
+import { ActionTile } from "./ActionTile";
 
 export default function TreeChat({ tree }: { tree: Tree }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]),
@@ -44,14 +46,21 @@ export default function TreeChat({ tree }: { tree: Tree }) {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [facts, setFacts] = useState<string[]>([]),
     [showFacts, setShowFacts] = useState(false);
-  const player = useAudioPlayer(null),
+  const player = useAudioPlayer(null, {
+      keepAudioSessionActive: true,
+      updateInterval: 100,
+    }),
     status = useAudioPlayerStatus(player),
     recorder = useAudioRecorder({
       ...RecordingPresets.HIGH_QUALITY,
       isMeteringEnabled: true,
     });
   const recordingStatus = useAudioRecorderState(recorder, 100);
-  const turn = useRef(new VoiceTurnDetector());
+  const speechThreshold = Platform.OS === "ios" ? -60 : -48;
+  const turn = useRef(new VoiceTurnDetector(speechThreshold));
+  const playbackExpected = useRef(false);
+  const lastReply = useRef<string | null>(null);
+  const requestingPermission = useRef(false);
   const generation = useRef(0);
   const historyRef = useRef(messages);
   historyRef.current = messages;
@@ -69,9 +78,14 @@ export default function TreeChat({ tree }: { tree: Tree }) {
     return () => {
       alive.current = false;
       generation.current++;
+      playbackExpected.current = false;
       player.pause();
       if (timeout.current) clearTimeout(timeout.current);
-      if (recording.current) void recorder.stop().catch(() => {});
+      if (recording.current)
+        void recorder
+          .stop()
+          .then(() => setAudioModeAsync(speakerMode))
+          .catch(() => {});
       void Speech.stop();
       for (const file of files.current) {
         try {
@@ -83,8 +97,12 @@ export default function TreeChat({ tree }: { tree: Tree }) {
     };
   }, []);
   useEffect(() => {
-    if (status.didJustFinish) setPhase("ready");
-    if (status.error) {
+    if (status.didJustFinish && playbackExpected.current) {
+      playbackExpected.current = false;
+      setPhase("ready");
+    }
+    if (status.error && playbackExpected.current) {
+      playbackExpected.current = false;
       setPhase("ready");
       setError(
         "Audio playback failed. Your reply is available as text. Resume to try again.",
@@ -102,7 +120,11 @@ export default function TreeChat({ tree }: { tree: Tree }) {
   }, [recordingStatus]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active") close();
+      if (
+        state === "background" ||
+        (state === "inactive" && !requestingPermission.current)
+      )
+        close();
     });
     return () => subscription.remove();
   }, []);
@@ -110,10 +132,7 @@ export default function TreeChat({ tree }: { tree: Tree }) {
     recording.current = false;
     if (timeout.current) clearTimeout(timeout.current);
     await recorder.stop().catch(() => {});
-    await setAudioModeAsync({
-      allowsRecording: false,
-      playsInSilentMode: true,
-    });
+    await setAudioModeAsync(speakerMode);
     if (!alive.current) return;
     setPaused(true);
     setPhase("ready");
@@ -176,25 +195,32 @@ export default function TreeChat({ tree }: { tree: Tree }) {
       setWarnings(answer.warnings);
       setFacts(answer.facts ?? []);
       if (spoken && voiceOpen.current && answer.audio_url) {
-        const file = new File(Paths.cache, `tree-voice-${Date.now()}.mp3`);
-        file.create();
-        // Retain just the current reply rather than accumulating an entire audio session.
+        player.pause();
+        playbackExpected.current = false;
+        const cached = cacheVoice(answer.audio_url);
         for (const old of files.current) {
           try {
             if (old.exists) old.delete();
           } catch {}
         }
-        files.current = [];
-        file.write(
-          new Uint8Array(decodeBase64(answer.audio_url.split(",")[1])),
+        files.current = cached.file ? [cached.file] : [];
+        lastReply.current = cached.uri;
+        setPhase("loading");
+        await playTreeAudio(
+          player,
+          cached.uri,
+          () =>
+            !alive.current ||
+            !voiceOpen.current ||
+            requestGeneration !== generation.current,
         );
-        files.current.push(file);
-        await setAudioModeAsync({
-          allowsRecording: false,
-          playsInSilentMode: true,
-        });
-        player.replace(file.uri);
-        player.play();
+        if (
+          !alive.current ||
+          !voiceOpen.current ||
+          requestGeneration !== generation.current
+        )
+          return;
+        playbackExpected.current = true;
         setPhase("speaking");
       } else if (
         spoken &&
@@ -238,10 +264,7 @@ export default function TreeChat({ tree }: { tree: Tree }) {
     setPhase("transcribing");
     try {
       await recorder.stop();
-      await setAudioModeAsync({
-        allowsRecording: false,
-        playsInSilentMode: true,
-      });
+      await setAudioModeAsync(speakerMode);
       if (!recorder.uri)
         throw new Error("No recording was captured. Please try again.");
       const file = new File(recorder.uri);
@@ -284,16 +307,25 @@ export default function TreeChat({ tree }: { tree: Tree }) {
     try {
       player.pause();
       await Speech.stop();
-      const permission = await requestRecordingPermissionsAsync();
+      requestingPermission.current = true;
+      let permission;
+      try {
+        permission = await requestRecordingPermissionsAsync();
+      } finally {
+        requestingPermission.current = false;
+      }
       if (!permission.granted)
         throw new Error(
           "Allow microphone access in Settings to ask with your voice.",
         );
       await setAudioModeAsync({
+        ...speakerMode,
         allowsRecording: true,
-        playsInSilentMode: true,
       });
-      await recorder.prepareToRecordAsync();
+      await recorder.prepareToRecordAsync({
+        ...RecordingPresets.HIGH_QUALITY,
+        isMeteringEnabled: true,
+      });
       if (
         !alive.current ||
         !voiceOpen.current ||
@@ -324,6 +356,7 @@ export default function TreeChat({ tree }: { tree: Tree }) {
     generation.current++;
     voiceOpen.current = false;
     setVoice(false);
+    playbackExpected.current = false;
     player.pause();
     void Speech.stop();
     if (timeout.current) clearTimeout(timeout.current);
@@ -331,20 +364,38 @@ export default function TreeChat({ tree }: { tree: Tree }) {
       recording.current = false;
       void recorder
         .stop()
-        .then(() => setAudioModeAsync({ allowsRecording: false }))
+        .then(() => setAudioModeAsync(speakerMode))
         .catch(() => {});
     }
     setPhase("ready");
   }
+  async function replay() {
+    if (!lastReply.current || locked.current) return;
+    const requestGeneration = generation.current;
+    setError("");
+    setBusy(true);
+    setPaused(true);
+    setPhase("loading");
+    try {
+      if (recording.current) await idle();
+      await playTreeAudio(
+        player,
+        lastReply.current,
+        () => !alive.current || requestGeneration !== generation.current,
+      );
+      if (alive.current && requestGeneration === generation.current) {
+        playbackExpected.current = true;
+        setPhase("speaking");
+      }
+    } catch (e) {
+      setError((e as Error).message);
+      setPhase("ready");
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
   const button = (title: string, fn: () => void, disabled = false) => (
-    <Pressable
-      accessibilityRole="button"
-      disabled={disabled}
-      onPress={fn}
-      style={[s.button, disabled && { opacity: 0.5 }]}
-    >
-      <Text style={s.buttonText}>{title}</Text>
-    </Pressable>
+    <ActionTile title={title} onPress={fn} disabled={disabled} />
   );
   return (
     <View style={s.chat}>
@@ -417,12 +468,15 @@ export default function TreeChat({ tree }: { tree: Tree }) {
         editable={!busy}
         style={s.input}
       />
-      {button("Send message", () => void send(), busy || !draft.trim())}
-      {button("Voice conversation", () => {
-        setError("");
-        setPaused(false);
-        setVoice(true);
-      })}
+      <View style={s.actions}>
+        {button("Send message", () => void send(), busy || !draft.trim())}
+        {button("Voice conversation", () => {
+          setError("");
+          setPaused(false);
+          setVoice(true);
+        })}
+        {lastReply.current && button("Replay reply", () => void replay(), busy)}
+      </View>
       <Modal visible={voice} animationType="slide" onRequestClose={close}>
         <SafeAreaView style={s.voice}>
           <View style={s.top}>
@@ -442,9 +496,13 @@ export default function TreeChat({ tree }: { tree: Tree }) {
                 ? "I'm listening"
                 : phase === "speaking"
                   ? "My story, out loud"
-                  : busy
-                    ? "Reading the leaves…"
-                    : "Let's talk"}
+                  : phase === "loading"
+                    ? "Getting my voice ready…"
+                    : phase === "transcribing"
+                      ? "Hearing your words…"
+                      : busy
+                        ? "Reading the leaves…"
+                        : "Let's talk"}
             </Text>
             <Text style={s.muted}>
               Speak naturally. Pause when you’re done; I’ll reply and listen
@@ -453,25 +511,41 @@ export default function TreeChat({ tree }: { tree: Tree }) {
             <ScrollView style={s.transcript}>
               <Text style={s.message}>{messages.at(-1)?.content}</Text>
             </ScrollView>
+            {phase === "listening" && (
+              <Text style={s.muted}>
+                {recordingStatus.metering != null &&
+                recordingStatus.metering > speechThreshold
+                  ? "Hearing you…"
+                  : "Microphone on — speak, then pause"}
+              </Text>
+            )}
             {!!error && (
               <Text accessibilityRole="alert" style={s.error}>
                 {error}
               </Text>
             )}
-            {button(
-              paused || error ? "Resume conversation" : "Pause microphone",
-              () => {
-                if (paused || error) {
-                  setError("");
-                  setPaused(false);
-                  setPhase("ready");
-                } else {
-                  setPaused(true);
-                  if (recording.current) void idle();
-                }
-              },
-              busy,
-            )}
+            <View style={s.actions}>
+              {lastReply.current &&
+                button(
+                  "Replay reply",
+                  () => void replay(),
+                  busy || phase === "listening",
+                )}
+              {button(
+                paused || error ? "Resume conversation" : "Pause microphone",
+                () => {
+                  if (paused || error) {
+                    setError("");
+                    setPaused(false);
+                    setPhase("ready");
+                  } else {
+                    setPaused(true);
+                    if (recording.current) void idle();
+                  }
+                },
+                busy,
+              )}
+            </View>
           </View>
         </SafeAreaView>
       </Modal>
@@ -479,6 +553,7 @@ export default function TreeChat({ tree }: { tree: Tree }) {
   );
 }
 const s = StyleSheet.create({
+  actions: { flexDirection: "row", gap: 12, flexWrap: "wrap" },
   chat: {
     gap: 10,
     borderTopWidth: 1,

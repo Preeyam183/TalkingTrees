@@ -1290,3 +1290,37 @@ footer span {
     animation: none !important;
   }
 }
+
+.tree-settings-modal {
+  position: relative;
+  background: var(--paper, #f6f8f4);
+  padding: 28px;
+  border-radius: 20px;
+  width: min(460px, calc(100vw - 32px));
+  box-shadow: 0 20px 80px #16351e35;
+}
+.tree-settings-modal form,
+.tree-settings-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tree-settings-modal form {
+  gap: 20px;
+}
+.tree-settings-modal label {
+  font-weight: 600;
+}
+.tree-settings-modal input,
+.tree-settings-modal select {
+  border: 1px solid #dce4da;
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  width: 100%;
+}
+.tree-settings-modal .text-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

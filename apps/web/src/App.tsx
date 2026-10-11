@@ -31,6 +31,7 @@ import {
 } from "@treequest/shared";
 import { api, client, devDemo, key } from "./client";
 import TreeChat from "./TreeChat";
+import TreeSettings from "./TreeSettings";
 const Simulator = import.meta.env.DEV
   ? lazy(() => import("./Simulator"))
   : null;
@@ -69,7 +70,6 @@ export default function App() {
     [simLocation, setSimLocation] = useState(devDemo),
     [session, setSession] = useState<WateringSession | null>(null),
     [registration, setRegistration] = useState(false),
-    [renaming, setRenaming] = useState(false),
     [renameName, setRenameName] = useState("");
   const snapshot = useQuery({
     queryKey: ["world", user],
@@ -135,8 +135,6 @@ export default function App() {
   }, [user]);
   useEffect(() => {
     setSession(null);
-    setRenaming(false);
-    setRenameName(tree?.name ?? "");
   }, [selected, user]);
   const dialogue = useQuery({
     queryKey: ["dialogue", tree?.id, tree?.updated_at, user],
@@ -169,12 +167,6 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }
-  async function renameTree() {
-    if (!tree) return;
-    await api.call("rename-tree", { tree_id: tree.id, name: renameName });
-    setRenaming(false);
-    refresh();
   }
   async function locate() {
     const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
@@ -391,8 +383,10 @@ export default function App() {
             <div>
               <small>TERRITORIES CONTROLLED</small>
               <strong>
-                {data?.territories.filter((t) => !!user && t.owner_id === user)
-                  .length ?? 0}
+                {me?.territories_controlled ??
+                  data?.territories.filter((t) => !!user && t.owner_id === user)
+                    .length ??
+                  0}
                 <em>Most trees controls each area</em>
               </strong>
             </div>
@@ -570,41 +564,13 @@ export default function App() {
                     <div className="tree-content">
                       <span className="eyebrow">MEET YOUR NEIGHBOR</span>
                       <h2>{tree.name}</h2>
-                      {user === tree.owner_id &&
-                        (renaming ? (
-                          <form
-                            className="rename-form"
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              void action(renameTree);
-                            }}
-                          >
-                            <input
-                              aria-label="Tree name"
-                              value={renameName}
-                              maxLength={80}
-                              onChange={(event) =>
-                                setRenameName(event.target.value)
-                              }
-                            />
-                            <button type="submit" disabled={busy}>
-                              Save name
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setRenaming(false)}
-                            >
-                              Cancel
-                            </button>
-                          </form>
-                        ) : (
-                          <button
-                            className="text-button"
-                            onClick={() => setRenaming(true)}
-                          >
-                            Rename tree
-                          </button>
-                        ))}
+                      {user === tree.owner_id && (
+                        <TreeSettings
+                          key={tree.id}
+                          tree={tree}
+                          onSaved={refresh}
+                        />
+                      )}
                       <p>
                         {tree.species_name ?? "Unidentified species"} ·{" "}
                         {
@@ -803,7 +769,7 @@ export default function App() {
         ) : (
           <section className="leaderboard">
             <h2>Growing together</h2>
-            <p>Points come from verified care. Every healthy tree is a win.</p>
+            <p>Care for your grove and grow together.</p>
             {data?.players.map((p, i) => (
               <div key={p.id} className="rank">
                 <span className="rank-number">0{i + 1}</span>
@@ -813,7 +779,10 @@ export default function App() {
                 <strong>
                   {p.display_name}
                   {p.id === user ? " (you)" : ""}
-                  <small>{p.owned_trees} trees in care</small>
+                  <small>
+                    {p.owned_trees} trees in care ·{" "}
+                    {p.territories_controlled ?? 0} territories controlled
+                  </small>
                 </strong>
                 <b>
                   {p.points}

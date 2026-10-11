@@ -105,3 +105,21 @@ Recorded live checks used isolated, email-confirmed temporary accounts created t
 Hosted security advisors found no RLS-disabled tables. Six internal service-only tables intentionally have RLS with no client policies. The existing Auth setting has [leaked password protection disabled](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection); this run did not change Auth settings.
 
 Remaining limits: physical-phone camera, GPS, microphone metering/audio playback, and device sensor calibration still require a device smoke test. The root Tiger URL is an example placeholder and hosted Tiger history remains unavailable; current Supabase values still work. Readings intentionally become stale after 30 minutes unless refreshed. The manually supplied trees cannot demonstrate hardware-verified watering or point awards. Existing transactional scoring was preserved, not bypassed.
+
+## Tree settings, iPhone audio, and presentation scores — October 11, 2026
+
+Migration `20261011124352_tree_settings_and_presentation_scores` was applied and registered on the hosted project. Caretakers can edit names and choose/preview voices on both clients. Saved `trees.voice_id` overrides environment defaults. The settings RPC rejects null or mismatched caretakers and is executable only by the service role. Public views retain security-invoker behavior; client writes to supplied presentation totals are denied.
+
+The iPhone audio path now restores speaker/silent-mode playback after recording, caches MP3 data as a native file, waits for native loading before playing, and reports loading failures. Each microphone turn prepares a fresh recording, the permission prompt does not close the voice screen, and quieter iOS metering can trigger automatic end-of-speech submission. Replay is available for the last audio reply. Square icon action tiles include auth and tree actions. Camera results include six curated care steps with an RHS or University of Minnesota source, rather than model-generated watering instructions.
+
+Administrator-supplied leaderboard totals were installed separately from the verified ledger: Preeyam 250 points / 2 territories, Maya 180 / 3, Jordan 135 / 1, and Alex 90 / 1. The three extra Auth accounts have reserved addresses and disabled login; no email was sent. Queries confirmed that verified point events and watering evidence remain empty, existing tree ownership remains unchanged, and no actual territory was reassigned by these presentation totals.
+
+Recorded checks:
+
+- 31 unit tests passed; 20 opt-in stateful tests were skipped. New tests cover native loading/playback ordering, cancellation and errors, quieter iPhone metering, settings validation, and care-guide selection.
+- Workspace typechecking, Deno checking, web production build, Expo dependency compatibility, and iOS/Android bundle exports passed. The existing web chunk-size warning remains. Reset-based integration suites were not rerun against the configured stack.
+- Hosted owner-only settings rejected another account, saved an isolated tree's name/voice, and used that selected voice for actual ElevenLabs synthesis. Owner RPC behavior and client privilege restrictions were checked separately.
+- An authenticated real Japanese maple photo returned Gemini identification and six appropriate care steps. Browser sign-in, settings edits, saved voice selection, and the populated leaderboard passed. Screenshots were inspected.
+- Temporary test accounts, tree records, photos, and sessions were removed. The final migration list matched local and hosted history.
+
+Native exports and mocked playback tests do not prove physical iPhone playback. The user reported a pause after speaking; verification on their iPhone after restarting Metro is still pending. Expo Go supports expo-audio; the changes address the application's native recording/playback lifecycle rather than requiring a standalone build.

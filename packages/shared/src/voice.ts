@@ -1,5 +1,6 @@
 /** Silence ends a turn only after speech; background noise and empty turns are ignored. */
 export class VoiceTurnDetector {
+  constructor(private readonly minimumSpeechDb = -48) {}
   private started = 0;
   private lastSpeech = 0;
   private speechMs = 0;
@@ -8,13 +9,13 @@ export class VoiceTurnDetector {
   reset(now: number) {
     this.started = this.previous = now;
     this.lastSpeech = this.speechMs = 0;
-    this.floor = -60;
+    this.floor = this.minimumSpeechDb - 12;
   }
   sample(db: number, now: number): "continue" | "send" | "idle" {
     if (!Number.isFinite(db)) return "continue";
     const elapsed = Math.min(200, Math.max(0, now - this.previous));
     this.previous = now;
-    const threshold = Math.max(-48, this.floor + 12);
+    const threshold = Math.max(this.minimumSpeechDb, this.floor + 12);
     if (db > threshold) {
       this.speechMs += elapsed;
       this.lastSpeech = now;

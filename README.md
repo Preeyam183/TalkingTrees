@@ -169,6 +169,14 @@ Select a database tree to open **Talk to [tree name]**. The conversation reads i
 
 On mobile, **Scan a tree → Open camera** identifies species with Gemini and uses permitted GPS coordinates to list nearby database candidates, including caretaker and latest calibrated readings. Confirm the physical tree before selecting a record. Species recognition is not proof of unique tree identity, living condition, or watering. Without GPS, species identification is still available but no location candidates are returned. If the tree is new, use registration.
 
+After identification, the camera shows six practical care steps and a horticultural source link. Confident Japanese maple identification uses the RHS growing guide; uncertain or other species use general tree guidance. Check actual soil and the caretaker's plan before watering. These instructions do not authorize a watering session or diagnose health from a photo.
+
+The caretaker can open **Tree settings** to change a tree's name and select or preview an ElevenLabs voice on either client. The saved database voice takes priority over server voice defaults. Native action buttons use square icon tiles with labels. On iPhone, recording is prepared anew each turn and playback waits for the MP3 to load with speaker output enabled, including silent mode. **Replay reply** retries the last spoken answer; the voice screen distinguishes transcription, thinking, audio loading, and speaking. Restart Metro after updating:
+
+```sh
+npm run mobile -- --lan --clear
+```
+
 Raw Pi uploads appear in `hardware_readings` and in conversation facts. They do not populate calibrated moisture, generate watering requests, earn points, or enter Tiger history. Use the hardware guide and Pi bridge's calibrated live mode with measured temperature to send canonical readings. A species recovery profile and valid authenticated watering evidence are necessary for scoring. Existing PostgreSQL game rules remain authoritative.
 
 ## Rutgers presentation grove
@@ -189,3 +197,5 @@ npm run mobile -- --lan --clear
 ```
 
 Sign in with Preeyam's existing account. Both clients use the deployed hosted API, so `supabase start` and `npm run backend` are unnecessary for this flow. Refresh readings again after 30 minutes if the presentation continues; stale readings deliberately produce an uncertain personality. The refresh command targets this project's three scenario records only. It is an explicit administrator operation, not a migration or production seed. [Presentation SQL](scripts/presentation-trees.sql) contains the IDs and JSON payload construction; [relocation SQL](scripts/rutgers-grove.sql) records the campus location change.
+
+The presentation leaderboard has Preeyam (250 care points, 2 territories), Maya (180, 3), Jordan (135, 1), and Alex (90, 1). These supplied totals live in `presentation_scores` with `source=manual_presentation`; verified point events, actual ownership, and map territory control remain governed by the existing game rules. The three additional Auth accounts use reserved addresses, discarded random passwords, and disabled login; no emails were sent. An authorized administrator can restore these supplied totals idempotently with `npm run presentation:leaderboard`. This command is restricted to the configured hosted project. Removing a `presentation_scores` row removes its supplied totals from the display while preserving verified scores.

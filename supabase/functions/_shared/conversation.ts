@@ -221,8 +221,23 @@ export async function synthesize(
   treeId?: string,
 ) {
   if (await isDemo()) return { url: null, source: "simulated" };
-  const key = Deno.env.get("ELEVENLABS_API_KEY"),
-    voice = elevenLabsVoiceId(personality, treeId);
+  const key = Deno.env.get("ELEVENLABS_API_KEY");
+  let assigned: string | null = null;
+  if (treeId) {
+    const settings = await db
+      .from("trees")
+      .select("voice_id")
+      .eq("id", treeId)
+      .single();
+    if (settings.error)
+      return {
+        url: null,
+        source: "unavailable",
+        error: "Could not load this tree’s voice settings. Please try again.",
+      };
+    assigned = settings.data.voice_id;
+  }
+  const voice = assigned || elevenLabsVoiceId(personality, treeId);
   if (!key || !voice)
     return {
       url: null,

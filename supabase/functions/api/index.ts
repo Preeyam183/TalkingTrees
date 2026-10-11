@@ -11,6 +11,8 @@ import {
   treeMessagePrompt,
   treeMessageJsonSchema,
   conversationPersonality,
+  treeSettingsSchema,
+  treeCareGuide,
 } from "../../../packages/shared/src/index.ts";
 import {
   db,
@@ -21,6 +23,7 @@ import {
   runDelivery,
 } from "../_shared/services.ts";
 import { personalityParams } from "../_shared/personality.ts";
+import { treeSettings, voiceCatalog } from "../_shared/tree-settings.ts";
 import { insights } from "../_shared/insights.ts";
 import { chat, transcribe, synthesize } from "../_shared/conversation.ts";
 const cors = {
@@ -92,7 +95,8 @@ async function dialogue(tree_id: string) {
   const personality = conversationPersonality(parameters);
   const fingerprint = await digest(
     JSON.stringify({
-      version: 3,
+      version: 4,
+      tree_name: t.name,
       parameters,
       model: Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash",
       demo: await isDemo(),
@@ -329,6 +333,30 @@ Deno.serve(async (req) => {
         }),
       );
     }
+    if (route === "tree-settings") {
+      const { tree_id } = z
+        .object({ tree_id: z.string().uuid() })
+        .strict()
+        .parse(p);
+      return json(await treeSettings(tree_id, u.id));
+    }
+    if (route === "update-tree-settings") {
+      const body = treeSettingsSchema.parse(p);
+      await treeSettings(body.tree_id, u.id);
+      if (
+        body.voice_id !== null &&
+        !(await voiceCatalog()).some((v) => v.id === body.voice_id)
+      )
+        return json({ error: "Choose an available voice from the list." }, 400);
+      return json(
+        await rpc("update_tree_settings", {
+          p_player: u.id,
+          p_tree: body.tree_id,
+          p_name: body.name,
+          p_voice: body.voice_id,
+        }),
+      );
+    }
     if (route === "tree-insights") return json(await insights(u.id, p));
     if (route === "tree-chat") return json(await chat(u.id, p));
     if (route === "transcribe") return json(await transcribe(p));
@@ -412,6 +440,10 @@ Deno.serve(async (req) => {
         return json({
           ...value,
           candidates,
+          care_guide: treeCareGuide(
+            typeof value.species_name === "string" ? value.species_name : null,
+            value.uncertain !== false,
+          ),
           match_note:
             lat === undefined
               ? "Enable location to find nearby database records. A photo identifies species, not a unique tree."

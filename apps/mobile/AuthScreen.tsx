@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { DEMO_PASSWORD, connectionMessage } from "@treequest/shared";
 import { client, demoBuild, url, configured } from "./client";
+import { ActionTile } from "./ActionTile";
 
 export default function AuthScreen() {
   const [signup, setSignup] = useState(false),
@@ -110,16 +111,13 @@ export default function AuthScreen() {
             </Text>
           )}
           {!!notice && <Text style={s.muted}>{notice}</Text>}
-          <Pressable
-            accessibilityRole="button"
-            style={s.button}
-            disabled={busy}
-            onPress={() => void submit()}
-          >
-            <Text style={s.buttonText}>
-              {signup ? "Create account" : "Sign in"}
-            </Text>
-          </Pressable>
+          <View style={s.action}>
+            <ActionTile
+              title={signup ? "Create account" : "Sign in"}
+              disabled={busy}
+              onPress={() => void submit()}
+            />
+          </View>
           <Pressable
             accessibilityRole="button"
             disabled={busy}
@@ -135,20 +133,18 @@ export default function AuthScreen() {
                 : "New here? Create an account"}
             </Text>
           </Pressable>
-          {demoBuild &&
-            [1, 2, 3].map((n) => (
-              <Pressable
-                accessibilityRole="button"
-                style={s.button}
-                key={n}
-                disabled={busy}
-                onPress={() => void submit(n)}
-              >
-                <Text style={s.buttonText}>
-                  Play as {["Alex", "Maya", "Sam"][n - 1]}
-                </Text>
-              </Pressable>
-            ))}
+          {demoBuild && (
+            <View style={s.demoActions}>
+              {[1, 2, 3].map((n) => (
+                <ActionTile
+                  key={n}
+                  title={`Play as ${["Alex", "Maya", "Sam"][n - 1]}`}
+                  disabled={busy}
+                  onPress={() => void submit(n)}
+                />
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -173,8 +169,8 @@ const s = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
   },
-  button: { backgroundColor: "#365d3d", padding: 15, borderRadius: 12 },
-  buttonText: { color: "white", textAlign: "center", fontWeight: "600" },
+  action: { alignItems: "center" },
+  demoActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   link: { color: "#365d3d", textAlign: "center", padding: 8 },
   error: { color: "#a34d42", lineHeight: 22 },
 });

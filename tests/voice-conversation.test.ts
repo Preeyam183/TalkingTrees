@@ -9,6 +9,17 @@ import {
 } from "../packages/shared/src/index";
 
 describe("automatic voice turns", () => {
+  it("detects quieter native microphone levels without sending empty turns", () => {
+    const detector = new VoiceTurnDetector(-60);
+    detector.reset(0);
+    for (let t = 100; t <= 500; t += 100)
+      expect(detector.sample(-80, t)).toBe("continue");
+    for (let t = 600; t <= 1400; t += 100)
+      expect(detector.sample(-55, t)).toBe("continue");
+    expect(detector.sample(-80, 2800)).toBe("send");
+    detector.reset(3000);
+    expect(detector.sample(-80, 48000)).toBe("idle");
+  });
   it("does not submit silence or brief microphone clicks", () => {
     const detector = new VoiceTurnDetector();
     detector.reset(0);

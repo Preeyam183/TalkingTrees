@@ -9,6 +9,7 @@ import {
   Pressable,
   StyleSheet,
   Alert,
+  Linking,
   Modal,
   ActivityIndicator,
   Image,
@@ -19,12 +20,15 @@ import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import * as Speech from "expo-speech";
 import * as Crypto from "expo-crypto";
-import { File, Paths } from "expo-file-system";
-import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
+import { File } from "expo-file-system";
+import { useAudioPlayer } from "expo-audio";
 import { type WateringSession, type InsightResponse } from "@treequest/shared";
 import { api, client, demoBuild, url } from "./client";
 import AuthScreen from "./AuthScreen";
 import TreeChat from "./TreeChat";
+import { TreeSettings } from "./TreeSettings";
+import { ActionTile } from "./ActionTile";
+import { cacheVoice, playTreeAudio } from "./audio";
 import {
   decodeBase64,
   connectionMessage,
@@ -40,26 +44,8 @@ const moistureLabel = (value: number | null) =>
         : "Comfortable";
 const stamp = (s: string | null) =>
   s ? new Date(s).toLocaleString() : "No readings";
-function Button({
-  title,
-  onPress,
-  disabled = false,
-}: {
-  title: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={disabled}
-      onPress={onPress}
-      style={[styles.button, disabled && { opacity: 0.4 }]}
-    >
-      <Text style={styles.buttonText}>{title}</Text>
-    </Pressable>
-  );
-}
+const Button = ActionTile;
+
 export default function App() {
   const [data, setData] = useState<Awaited<
       ReturnType<typeof api.snapshot>
@@ -76,8 +62,6 @@ export default function App() {
     [question, setQuestion] = useState("How are my trees doing this week?"),
     [insight, setInsight] = useState<InsightResponse | null>(null),
     [register, setRegister] = useState(false),
-    [renaming, setRenaming] = useState(false),
-    [renameName, setRenameName] = useState(""),
     [photo, setPhoto] = useState(""),
     [name, setName] = useState(""),
     [species, setSpecies] = useState<string | null>(null),
@@ -93,7 +77,7 @@ export default function App() {
   const tree = data?.trees.find((t) => t.id === selected);
   const me = data?.players.find((p) => p.id === user);
   const demo = demoBuild && data?.config.demo_mode;
-  const player = useAudioPlayer(null);
+  const player = useAudioPlayer(null, { keepAudioSessionActive: true });
   useEffect(
     () => () => {
       try {
@@ -168,8 +152,6 @@ export default function App() {
   }, [user]);
   useEffect(() => {
     setSession(null);
-    setRenaming(false);
-    setRenameName(tree?.name ?? "");
   }, [selected, user]);
   useEffect(() => {
     setMessage("");
@@ -216,30 +198,15 @@ export default function App() {
       }),
     );
   }
-  async function renameTree() {
-    if (!tree) return;
-    await api.call("rename-tree", { tree_id: tree.id, name: renameName });
-    setRenaming(false);
-  }
   async function voice() {
     if (!tree) return;
     const r = await api.call("tree-voice", { tree_id: tree.id });
     if (r.url) {
-      await setAudioModeAsync({
-        allowsRecording: false,
-        playsInSilentMode: true,
-      });
-      let audioUri = r.url;
-      if (r.url.startsWith("data:")) {
-        if (playbackFile.current?.exists) playbackFile.current.delete();
-        const file = new File(Paths.cache, `tree-intro-${Date.now()}.mp3`);
-        file.create();
-        file.write(new Uint8Array(decodeBase64(r.url.split(",")[1])));
-        playbackFile.current = file;
-        audioUri = file.uri;
-      }
-      player.replace(audioUri);
-      player.play();
+      player.pause();
+      const cached = cacheVoice(r.url);
+      if (playbackFile.current?.exists) playbackFile.current.delete();
+      playbackFile.current = cached.file;
+      await playTreeAudio(player, cached.uri);
     } else if (r.source === "simulated") Speech.speak(r.message);
     else
       Alert.alert(
@@ -392,8 +359,10 @@ export default function App() {
           <Text style={styles.summaryText}>{me?.points ?? 0} care points</Text>
           <Text style={styles.summaryText}>{me?.owned_trees ?? 0} trees</Text>
           <Text style={styles.summaryText}>
-            {data?.territories.filter((t) => !!user && t.owner_id === user)
-              .length ?? 0}{" "}
+            {me?.territories_controlled ??
+              data?.territories.filter((t) => !!user && t.owner_id === user)
+                .length ??
+              0}{" "}
             territories
           </Text>
         </View>
@@ -456,34 +425,6 @@ export default function App() {
                   />
                 )}
                 <Text style={styles.title}>{tree.name}</Text>
-                {user === tree.owner_id &&
-                  (renaming ? (
-                    <>
-                      <TextInput
-                        style={styles.input}
-                        accessibilityLabel="Tree name"
-                        value={renameName}
-                        maxLength={80}
-                        onChangeText={setRenameName}
-                      />
-                      <Button
-                        title="Save name"
-                        disabled={busy}
-                        onPress={() => run(renameTree)}
-                      />
-                      <Button
-                        title="Cancel"
-                        disabled={busy}
-                        onPress={() => setRenaming(false)}
-                      />
-                    </>
-                  ) : (
-                    <Button
-                      title="Rename tree"
-                      disabled={busy}
-                      onPress={() => setRenaming(true)}
-                    />
-                  ))}
                 <Text style={styles.muted}>
                   {tree.species_name ?? "Unidentified"} ·{" "}
                   {moistureLabel(tree.moisture)}
@@ -501,17 +442,26 @@ export default function App() {
                 <Text style={styles.quote}>
                   {message || "Sign in to hear my story."}
                 </Text>
-                <Button
-                  title={
-                    demo ? "Listen · device speech demo" : "Listen to tree"
-                  }
-                  disabled={!user || busy}
-                  onPress={() => run(voice)}
-                />
-                <Button
-                  title={`Chat with ${tree.name}`}
-                  onPress={() => setTab("chat")}
-                />
+                <View style={styles.actionGrid}>
+                  {user === tree.owner_id && (
+                    <TreeSettings
+                      key={tree.id}
+                      tree={tree}
+                      onSaved={() => void refresh()}
+                    />
+                  )}
+                  <Button
+                    title={
+                      demo ? "Listen · device speech demo" : "Listen to tree"
+                    }
+                    disabled={!user || busy}
+                    onPress={() => run(voice)}
+                  />
+                  <Button
+                    title={`Chat with ${tree.name}`}
+                    onPress={() => setTab("chat")}
+                  />
+                </View>
                 <Text style={styles.muted}>
                   Recovery threshold {tree.recovery_pct ?? "unconfigured"}%.
                   Partial watering earns no points.
@@ -593,13 +543,15 @@ export default function App() {
               onPress={() => setRegister(true)}
             />
             <Text style={styles.title}>Trees in your neighborhood</Text>
-            {data?.trees.map((t) => (
-              <Button
-                key={t.id}
-                title={`${t.name} · ${moistureLabel(t.moisture)} · ${t.moisture ?? "—"}%`}
-                onPress={() => setSelected(t.id)}
-              />
-            ))}
+            <View style={styles.actionGrid}>
+              {data?.trees.map((t) => (
+                <Button
+                  key={t.id}
+                  title={`${t.name} · ${moistureLabel(t.moisture)} · ${t.moisture ?? "—"}%`}
+                  onPress={() => setSelected(t.id)}
+                />
+              ))}
+            </View>
           </>
         )}
         {tab === "leaderboard" &&
@@ -609,7 +561,8 @@ export default function App() {
                 {i + 1}. {p.display_name}
               </Text>
               <Text>
-                {p.points} care points · {p.owned_trees} trees
+                {p.points} care points · {p.owned_trees} trees ·{" "}
+                {p.territories_controlled ?? 0} territories controlled
               </Text>
             </View>
           ))}
@@ -705,7 +658,16 @@ export default function App() {
               </ScrollView>
             </View>
             {tree ? (
-              <TreeChat key={`${user}:${tree.id}`} tree={tree} />
+              <>
+                {user === tree.owner_id && (
+                  <TreeSettings
+                    key={tree.id}
+                    tree={tree}
+                    onSaved={() => void refresh()}
+                  />
+                )}
+                <TreeChat key={`${user}:${tree.id}`} tree={tree} />
+              </>
             ) : (
               <Text style={styles.muted}>
                 Choose a tree to start a conversation.
@@ -737,6 +699,31 @@ export default function App() {
                   {scanResult.species_name ?? "Species unidentified"}
                 </Text>
                 <Text>{scanResult.description}</Text>
+                {scanResult.care_guide && (
+                  <View style={styles.card}>
+                    <Text style={styles.title}>
+                      {scanResult.care_guide.title}
+                    </Text>
+                    {scanResult.care_guide.steps.map((step, i) => (
+                      <Text key={step} style={styles.careStep}>
+                        {i + 1}. {step}
+                      </Text>
+                    ))}
+                    <Text style={styles.muted}>
+                      {scanResult.care_guide.note}
+                    </Text>
+                    <Pressable
+                      accessibilityRole="link"
+                      onPress={() =>
+                        void Linking.openURL(scanResult.care_guide.source_url)
+                      }
+                    >
+                      <Text style={styles.careSource}>
+                        {scanResult.care_guide.source_title} ↗
+                      </Text>
+                    </Pressable>
+                  </View>
+                )}
                 <Text style={styles.muted}>{scanResult.match_note}</Text>
                 {scanResult.candidates.map((candidate) => (
                   <View key={candidate.id} style={styles.card}>
@@ -876,6 +863,14 @@ export default function App() {
   );
 }
 const styles = StyleSheet.create({
+  actionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  careStep: {
+    fontSize: 14,
+    color: "#244c37",
+    lineHeight: 22,
+    marginVertical: 5,
+  },
+  careSource: { color: "#365d3d", textDecorationLine: "underline" },
   safe: { flex: 1, backgroundColor: "#f6f8f4" },
   container: { padding: 20, gap: 12, paddingBottom: 28 },
   tabBar: {

@@ -66,6 +66,35 @@ export const chatSchema = z
     voice: z.boolean().default(false),
   })
   .strict();
+export const treeSettingsSchema = z
+  .object({
+    tree_id: z.string().uuid(),
+    name: z.string().trim().min(1).max(80),
+    voice_id: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{1,100}$/)
+      .nullable(),
+  })
+  .strict();
+export type TreeVoice = {
+  id: string;
+  name: string;
+  preview_url: string | null;
+};
+export type TreeSettingsResponse = {
+  name: string;
+  voice_id: string | null;
+  effective_voice_id: string | null;
+  voices: TreeVoice[];
+  warning?: string;
+};
+export type TreeCareGuide = {
+  title: string;
+  steps: string[];
+  source_title: string;
+  source_url: string;
+  note: string;
+};
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type ChatResponse = {
   message: string;
@@ -90,6 +119,7 @@ export type IdentificationResponse = {
   source: string;
   candidates: ScanCandidate[];
   match_note: string;
+  care_guide: TreeCareGuide;
 };
 export function decodeBase64(value: string): ArrayBuffer {
   const alphabet =
@@ -142,6 +172,7 @@ export type Tree = {
   thirst_pct: number | null;
   recovery_pct: number | null;
   request_id: string | null;
+  voice_id?: string | null;
 };
 export type Player = {
   id: string;
@@ -149,6 +180,9 @@ export type Player = {
   color: string;
   points: number;
   owned_trees: number;
+  territories_controlled?: number;
+  verified_points?: number;
+  presentation_points?: number;
 };
 export type Territory = {
   id: string;
@@ -273,3 +307,5 @@ export function createApi(
 }
 export * from "./voice.ts";
 export * from "./conversation.ts";
+
+export * from "./care.ts";
