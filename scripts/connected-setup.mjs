@@ -19,6 +19,56 @@ if (!existsSync(file))
   });
 const root = existsSync(".env") ? parseEnv(readFileSync(".env", "utf8")) : {};
 let backend = parseEnv(readFileSync(file, "utf8"));
+// Import only backend settings; private credentials never enter client env files.
+const providerNames = [
+  "GEMINI_API_KEY",
+  "GEMINI_MODEL",
+  "ELEVENLABS_API_KEY",
+  "ELEVENLABS_VOICE_ID",
+  "ELEVENLABS_VOICE_ID_WARM",
+  "ELEVENLABS_VOICE_ID_WATCHFUL",
+  "ELEVENLABS_VOICE_ID_QUIET",
+  "ELEVENLABS_VOICE_ID_SOLEMN",
+  "ELEVENLABS_MODEL",
+  "ELEVENLABS_STT_MODEL",
+  "TIGER_DATABASE_URL",
+  "TIGER_TRANSPORT",
+];
+for (const name of providerNames) {
+  const value = root[name]?.trim();
+  if (!value) continue;
+  if (/YOUR_|placeholder|change-me|replace-me/i.test(value)) {
+    console.log(`${name} is a placeholder; it was not imported.`);
+    continue;
+  }
+  if (name === "TIGER_DATABASE_URL") {
+    let tiger;
+    try {
+      tiger = new URL(value);
+    } catch {
+      throw new Error(
+        "TIGER_DATABASE_URL must be a PostgreSQL connection URI.",
+      );
+    }
+    if (!["postgres:", "postgresql:"].includes(tiger.protocol))
+      throw new Error(
+        "TIGER_DATABASE_URL must be a PostgreSQL connection URI.",
+      );
+    if (tiger.hostname === "host" || tiger.password === "password") {
+      console.log("TIGER_DATABASE_URL is an example; it was not imported.");
+      continue;
+    }
+  }
+  backend[name] = value;
+}
+configure(
+  file,
+  Object.fromEntries(
+    providerNames
+      .filter((name) => backend[name])
+      .map((name) => [name, backend[name]]),
+  ),
+);
 const url = backend.CLIENT_SUPABASE_URL || root.NEXT_PUBLIC_SUPABASE_URL;
 const key =
   backend.CLIENT_SUPABASE_PUBLISHABLE_KEY ||
@@ -40,21 +90,20 @@ if (key.startsWith("ey")) {
     throw new Error("Never use a service-role JWT in client settings.");
 }
 const project = target.hostname.split(".")[0];
-if (!backend.WORKER_SECRET) {
+if (
+  !backend.WORKER_SECRET ||
+  /YOUR_|placeholder|change-me|replace-me/i.test(backend.WORKER_SECRET)
+) {
   backend.WORKER_SECRET = randomBytes(32).toString("hex");
-  const text = readFileSync(file, "utf8").replace(
-    /^WORKER_SECRET=.*$/m,
-    `WORKER_SECRET=${backend.WORKER_SECRET}`,
-  );
-  writeFileSync(file, text, { mode: 0o600 });
+  configure(file, { WORKER_SECRET: backend.WORKER_SECRET });
 }
 function configure(path, values) {
   let text = existsSync(path) ? readFileSync(path, "utf8") : "";
   for (const [name, value] of Object.entries(values)) {
     const pattern = new RegExp(`^${name}=.*$`, "m");
     text = pattern.test(text)
-      ? text.replace(pattern, () => `${name}=${value}`)
-      : `${text.trimEnd()}\n${name}=${value}\n`;
+      ? text.replace(pattern, () => `${name}=${JSON.stringify(value)}`)
+      : `${text.trimEnd()}\n${name}=${JSON.stringify(value)}\n`;
   }
   writeFileSync(path, text.trim() + "\n", { mode: 0o600 });
 }
@@ -68,25 +117,16 @@ configure("apps/mobile/.env.local", {
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: key,
   EXPO_PUBLIC_APP_MODE: "connected",
 });
-const allowed = [
-  "GEMINI_API_KEY",
-  "GEMINI_MODEL",
-  "ELEVENLABS_API_KEY",
-  "ELEVENLABS_VOICE_ID",
-  "ELEVENLABS_VOICE_ID_WARM",
-  "ELEVENLABS_VOICE_ID_WATCHFUL",
-  "ELEVENLABS_VOICE_ID_QUIET",
-  "ELEVENLABS_VOICE_ID_SOLEMN",
-  "ELEVENLABS_MODEL",
-  "ELEVENLABS_STT_MODEL",
-  "TIGER_DATABASE_URL",
-  "TIGER_TRANSPORT",
-];
+const allowed = providerNames;
 const settings = {
   APP_MODE: "connected",
   HISTORY_MODE: "tiger",
   WORKER_SECRET: backend.WORKER_SECRET,
 };
+configure(file, {
+  APP_MODE: settings.APP_MODE,
+  HISTORY_MODE: settings.HISTORY_MODE,
+});
 for (const name of allowed) if (backend[name]) settings[name] = backend[name];
 if (settings.TIGER_DATABASE_URL) {
   const tiger = new URL(settings.TIGER_DATABASE_URL);
@@ -95,13 +135,19 @@ if (settings.TIGER_DATABASE_URL) {
       "Replace the example TIGER_DATABASE_URL or leave it empty until configured.",
     );
 }
+if (process.argv.includes("--prepare-only")) {
+  console.log(
+    `Connected environment files prepared for ${project}; hosted secrets were not changed.`,
+  );
+  process.exit(0);
+}
 const dir = mkdtempSync(join(tmpdir(), "treequest-connected-"));
 try {
   const secrets = join(dir, ".env");
   writeFileSync(
     secrets,
     Object.entries(settings)
-      .map(([name, value]) => `${name}=${value}`)
+      .map(([name, value]) => `${name}=${JSON.stringify(value)}`)
       .join("\n"),
     { mode: 0o600 },
   );

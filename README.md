@@ -94,6 +94,10 @@ Bundle export verifies native module resolution but is not a physical-device cam
 
 Supabase injects service-role credentials into Edge Functions. Never place service-role, Gemini, ElevenLabs, Tiger Data, device, or worker secrets in `VITE_*` or `EXPO_PUBLIC_*` variables. The initial root environment's `NEXT_PUBLIC_*` names are not consumed by these Vite/Expo apps.
 
+If your provider keys are in the root `.env`, run `npm run connected:setup` to import nonempty backend settings into ignored `supabase/.env.connected`, configure both clients, and install hosted secrets and worker Vault settings. Root provider values override the corresponding connected values; empty values and example Tiger URLs are skipped. To prepare the files without contacting Supabase, run `npm run connected:setup -- --prepare-only`. Hosted secret installation requires an Owner or Administrator account. Root `.env` alone does not configure deployed functions or the local `npm run backend` process.
+
+The verified provider configuration uses `GEMINI_MODEL=gemini-3.1-flash-lite`, an available `ELEVENLABS_VOICE_ID`, and an ElevenLabs key with Text to Speech, Speech to Text, and Read Voices permissions. Tiger is a separate Timescale PostgreSQL service; Supabase does not automatically provide its connection. Replace `TIGER_DATABASE_URL` with that service's runtime URI and install `tiger/setup.sql` before enabling historical delivery.
+
 ## Layout and contracts
 
 - `apps/web`: responsive React/Vite map, tree care, registration, leaderboard, insights, and development-only simulator.
