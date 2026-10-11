@@ -21,9 +21,7 @@ export async function isDemo() {
   );
 }
 export type TreePersonality = "warm" | "watchful" | "quiet" | "solemn";
-export function personalityForTree(state: {
-  status: string;
-}): TreePersonality {
+export function personalityForTree(state: { status: string }): TreePersonality {
   if (state.status === "dead") return "solemn";
   if (state.status === "unknown") return "quiet";
   if (state.status === "thirsty") return "watchful";
@@ -82,20 +80,30 @@ export function tiger() {
     idle_timeout: 5,
   });
 }
+export async function usesSimulatedHistory() {
+  const mode = Deno.env.get("HISTORY_MODE") || "auto";
+  if (!["auto", "tiger"].includes(mode))
+    throw new Error("HISTORY_MODE must be auto or tiger");
+  return mode === "auto" && (await isDemo());
+}
 export async function runDelivery() {
+  const demo = await usesSimulatedHistory();
   const items = await rpc("claim_deliveries", { p_limit: 100 });
-  const demo = await isDemo();
   let delivered = 0;
   for (const item of items) {
     let error: string | null = null;
     try {
       if (!demo) {
-        const sql = tiger();
-        try {
-          const r = item.reading;
-          await sql`insert into sensor_history(reading_id,tree_id,device_id,recorded_at,soil_moisture_pct,temperature_c) values(${r.id},${r.tree_id},${r.device_id},${r.recorded_at},${r.soil_moisture_pct},${r.temperature_c}) on conflict(reading_id,recorded_at) do nothing`;
-        } finally {
-          await sql.end();
+        if (Deno.env.get("TIGER_TRANSPORT") === "fdw") {
+          await rpc("tiger_insert_reading", { p_reading: item.reading });
+        } else {
+          const sql = tiger();
+          try {
+            const r = item.reading;
+            await sql`insert into sensor_history(reading_id,tree_id,device_id,recorded_at,soil_moisture_pct,temperature_c) values(${r.id},${r.tree_id},${r.device_id},${r.recorded_at},${r.soil_moisture_pct},${r.temperature_c}) on conflict(reading_id,recorded_at) do nothing`;
+          } finally {
+            await sql.end();
+          }
         }
       }
       delivered++;
@@ -116,7 +124,7 @@ export async function runDelivery() {
 }
 export async function readHistory(ids: string[], from: string, to: string) {
   if (!ids.length) return [];
-  if (await isDemo()) {
+  if (await usesSimulatedHistory()) {
     const all: any[] = [];
     for (let offset = 0; ; offset += 1000) {
       const { data, error } = await db
@@ -137,6 +145,19 @@ export async function readHistory(ids: string[], from: string, to: string) {
         throw new Error("Too many readings; narrow the date range");
     }
     return all.map((r) => ({
+      ...r,
+      recorded_at: new Date(r.recorded_at).toISOString(),
+    }));
+  }
+  if (Deno.env.get("TIGER_TRANSPORT") === "fdw") {
+    const rows = await rpc("tiger_read_history", {
+      p_ids: ids,
+      p_from: from,
+      p_to: to,
+    });
+    if (rows.length > 100000)
+      throw new Error("Too many readings; narrow the date range");
+    return rows.map((r: any) => ({
       ...r,
       recorded_at: new Date(r.recorded_at).toISOString(),
     }));

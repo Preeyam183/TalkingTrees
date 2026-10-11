@@ -1,5 +1,18 @@
 # Implementation validation
 
+## Real Tiger development integration — October 10, 2026
+
+- Created free shared DEV service `treequest-history` (`yz8dps8fs2`, us-east-1).
+- Installed the TimescaleDB history hypertable and tree/time index. Runtime role verified to have SELECT/INSERT, without UPDATE/DELETE.
+- Kept local demo controls (`APP_MODE=demo`) and enabled real historical storage (`HISTORY_MODE=tiger`). These settings are in ignored `supabase/.env.local`; root `.env` is not loaded by the backend command.
+- The local Edge runtime rejected this service's certificate with `CaUsedAsEndEntity`. Installed the backend-only PostgreSQL FDW transport (`TIGER_TRANSPORT=fdw`); setup and TLS limitations are documented in [operations](OPERATIONS.md).
+- Delivered all 340 existing fictional demo readings to real Tiger. Verified 340 remote rows, zero outstanding/failed deliveries, and unchanged count after duplicate inserts.
+- Authenticated Ask My Trees returned HTTP 200 with `source: "tiger"` and actual history statistics. Current stale-sensor warnings remain accurate; this is not a real-hardware validation.
+- Both Cron jobs succeeded and scheduled delivery HTTP responses were 200. Ordinary authenticated/anonymous roles cannot call the private Tiger RPCs.
+- Edge Function Deno check and 9 unit tests passed. Database-reset integration suites were deliberately not run against the configured history.
+
+The original full implementation checks below predate this integration; their provider limitations describe that earlier run. Gemini, ElevenLabs, physical hardware, and hosted Supabase deployment were not verified by this Tiger setup.
+
 Verified locally on October 10, 2026, using Node 24, Docker Desktop, local Supabase/PostgreSQL 17, Chromium, and an iPhone 16 Pro simulator running iOS 18.6 / Expo SDK 54.
 
 | Check | Result |

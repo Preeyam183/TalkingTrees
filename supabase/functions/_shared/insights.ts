@@ -7,7 +7,13 @@ import {
   weekPeriod,
   portfolioAverage,
 } from "../../../packages/shared/src/analytics.ts";
-import { db, gemini, isDemo, readHistory, config } from "./services.ts";
+import {
+  db,
+  gemini,
+  usesSimulatedHistory,
+  readHistory,
+  config,
+} from "./services.ts";
 export async function insights(player: string, body: unknown) {
   const { question, timezone } = z
     .object({
@@ -25,7 +31,7 @@ export async function insights(player: string, body: unknown) {
   const base = {
     period,
     queried_at: new Date().toISOString(),
-    source: (await isDemo()) ? "simulated" : "tiger",
+    source: (await usesSimulatedHistory()) ? "simulated" : "tiger",
     tree_ids: [],
     statistics: [],
     freshness: [],

@@ -48,6 +48,41 @@ curl --fail-with-body "$FUNCTIONS_URL/delivery-worker" \
 
 ## Tiger Data setup
 
+### CLI setup for a development service
+
+With Tiger CLI installed and signed in, use an existing service ID, or create a free shared development service:
+
+```sh
+tiger auth status
+tiger service create --name treequest-history --cpu shared --environment DEV
+tiger service list
+npm run tiger:setup -- YOUR_SERVICE_ID
+```
+
+The setup script applies `tiger/setup.sql`, creates `treequest_runtime` with schema USAGE and history SELECT/INSERT permissions, and saves its URL only in ignored `supabase/.env.local`. The administrator password stays in the CLI keyring; credentials are never printed. Rerunning setup reuses the saved runtime credential without resetting its password.
+
+Free Tiger services can present certificates rejected by Supabase's Deno runtime (`CaUsedAsEndEntity`). For the local stack, install the optional PostgreSQL foreign-data transport:
+
+```sh
+npm run tiger:setup -- YOUR_SERVICE_ID --local-fdw
+npm run backend
+```
+
+This uses the fixed local database at `127.0.0.1:54322`, installs `tiger/supabase-fdw.sql`, and writes `TIGER_TRANSPORT=fdw` to the backend environment. PostgreSQL connects to Tiger with `sslmode=require` (encrypted transport, without full certificate identity verification, matching the existing direct client's require mode). Runtime credentials reside in a PostgreSQL user mapping accessible to database administrators. The foreign table is in a private schema; only `service_role` can execute the insertion/history RPCs. The Edge API still authorizes tree IDs, manages queue leases, and reports freshness. `TIGER_TRANSPORT=direct` uses the original Edge PostgreSQL client. For production, configure a CA-signed certificate and full certificate verification; do not disable TLS to work around this error. Hosted FDW installation requires an explicit administrator setup and is not performed by the local installer.
+
+To keep simulated hardware/game controls while storing history in real Tiger, retain `APP_MODE=demo` and set `HISTORY_MODE=tiger` in `supabase/.env.local`, then restart `npm run backend`. Both delivery and analytics use Tiger, and responses report `source: "tiger"`; outages never fall back to simulated history. The underlying demo readings remain fictional. `HISTORY_MODE=auto` preserves the original behavior: simulated history in demo, real Tiger in connected mode. The root `.env` is not loaded by `npm run backend`.
+
+When switching an existing local demo from simulated delivery to a new empty Tiger database, requeue its previous simulated acknowledgements once, after restarting the backend in Tiger history mode. Run against the **local demo database only**:
+
+```sql
+update sensor_delivery_queue
+set state='pending', delivered_at=null, attempts=0, next_attempt_at=now(),
+    lease_until=null, lease_token=null, last_error=null;
+select public.invoke_delivery_worker();
+```
+
+The worker drains batches of 100; Cron continues every minute. Pending counts remain visible until actual Tiger insertion succeeds. Repeated insertion is safe because the history primary key rejects duplicates. Demo resets restore simulated seed acknowledgements, so repeat this requeue after a reset when using real Tiger history. Do not run destructive integration/reset suites against this configured demo unless you intend to reseed it.
+
 Run `tiger/setup.sql` against the team-provided Tiger Data database. Provide the backend a TLS-enabled connection string with SELECT and INSERT access to `sensor_history`. Supabase remains the scoring/ownership source of truth and retains accepted readings plus the delivery outbox.
 
 ```sh

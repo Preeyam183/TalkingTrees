@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "tiger:setup": "node scripts/tiger-setup.mjs",
     "dev": "npm run dev -w @treequest/web",
     "build": "npm run build -w @treequest/web",
     "mobile": "expo start apps/mobile",
